@@ -17,6 +17,10 @@ export default function RootLayout() {
         <Stack.Screen name="edit-profile" />
         <Stack.Screen name="center/[id]" />
         <Stack.Screen name="booking/[centerId]" />
+        <Stack.Screen name="category/[id]" />
+        <Stack.Screen name="map" />
+        <Stack.Screen name="center/[id]/gallery" />
+        <Stack.Screen name="center/[id]/reviews" />
       </Stack>
     </>
   );
