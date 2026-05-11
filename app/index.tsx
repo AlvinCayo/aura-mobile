@@ -1,23 +1,29 @@
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Text, View } from 'react-native';
+import { useAuthStore } from '../src/store/authStore';
 
 export default function SplashScreen() {
+  const hasSeenOnboarding = useAuthStore((state) => state.hasSeenOnboarding);
+
   useEffect(() => {
-    const timer = setTimeout(() => { router.replace('/login'); }, 3000);
+    const timer = setTimeout(() => {
+      if (!hasSeenOnboarding) {
+        router.replace('/onboarding' as any);
+      } else {
+        router.replace('/login');
+      }
+    }, 2500);
     return () => clearTimeout(timer);
-  }, []);
+  }, [hasSeenOnboarding]);
 
   return (
     <View className="flex-1 items-center justify-center bg-aura-cream-100">
-      <View className="w-24 h-24 rounded-3xl bg-aura-blue-400 items-center justify-center shadow-lg mb-4">
-        <Feather name={"sparkles" as any} size={48} color="white" />
+      <View className="w-20 h-20 bg-aura-blue-400 rounded-3xl items-center justify-center shadow-2xl">
+        <Feather name={"sparkles" as any} size={40} color="white" />
       </View>
-      <Text className="text-4xl font-bold text-gray-900 tracking-tight">AURA</Text>
-      <Text className="text-gray-500 mt-1">Bienestar & Estética</Text>
-      <StatusBar style="auto" />
+      <Text className="mt-4 text-3xl font-bold tracking-tighter italic text-aura-blue-400">AURA</Text>
     </View>
   );
 }
