@@ -1,7 +1,6 @@
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-// ✅ Añade esta nueva línea debajo de las otras importaciones:
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function LoginScreen() {
