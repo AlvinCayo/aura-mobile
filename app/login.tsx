@@ -1,82 +1,70 @@
 import { Feather } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { KeyboardAvoidingView, Platform, SafeAreaView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-export default function Login() {
+export default function LoginScreen() {
   return (
-    <SafeAreaView className="flex-1 bg-white">
+    <SafeAreaView className="flex-1 bg-white px-6">
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1 px-6 py-8"
+        className="flex-1"
       >
-        {/* Cabecera AURA */}
-        <View className="flex-row items-center gap-3 mb-10 mt-6">
-          <View className="w-14 h-14 rounded-2xl bg-[#6BA3D6] items-center justify-center shadow-sm">
-            <Text className="text-white text-2xl">✨</Text>
+        {/* Cabecera AURA con Icono corregido */}
+        <View className="mt-12 mb-8 flex-row items-center gap-3">
+          <View className="w-12 h-12 rounded-xl bg-aura-blue-400 items-center justify-center shadow-sm">
+            <Feather name={"sparkles" as any} size={24} color="white" />
           </View>
           <View>
-            <Text className="text-3xl font-bold text-gray-900 tracking-tight">AURA</Text>
-            <Text className="text-sm text-gray-500">Bienestar & Estética</Text>
+            <Text className="text-2xl font-bold text-gray-900 tracking-tight italic">AURA</Text>
+            <Text className="text-xs text-gray-500 uppercase tracking-widest font-semibold">Bienestar</Text>
           </View>
         </View>
 
-        {/* Título */}
-        <View className="mb-8">
-          <Text className="text-2xl font-bold text-gray-900 mb-2">Bienvenido de vuelta</Text>
-          <Text className="text-base text-gray-500">Inicia sesión para continuar</Text>
-        </View>
+        <Text className="text-2xl font-bold text-gray-900 mb-1">Bienvenido de vuelta</Text>
+        <Text className="text-gray-500 mb-8">Inicia sesión para continuar</Text>
 
-        {/* Formulario */}
-        <View className="space-y-5">
+        <View className="space-y-4">
           {/* Input Correo */}
-          <View>
-            <Text className="text-sm font-medium text-gray-900 mb-2">Correo Electrónico</Text>
-            <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-4 h-14">
-              <Feather name="mail" size={20} color="#9CA3AF" />
-              <TextInput 
-                placeholder="tu@email.com"
-                className="flex-1 ml-3 text-base text-gray-900"
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-            </View>
+          <View className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-4 flex-row items-center">
+            <Feather name={"mail" as any} size={20} color="#9CA3AF" />
+            <TextInput 
+              placeholder="Correo Electrónico" 
+              className="ml-3 flex-1 text-base"
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
           </View>
 
           {/* Input Contraseña */}
-          <View>
-            <Text className="text-sm font-medium text-gray-900 mb-2 mt-4">Contraseña</Text>
-            <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-xl px-4 h-14">
-              <Feather name="lock" size={20} color="#9CA3AF" />
-              <TextInput 
-                placeholder="••••••••"
-                secureTextEntry
-                className="flex-1 ml-3 text-base text-gray-900"
-              />
-              <TouchableOpacity>
-                <Feather name="eye-off" size={20} color="#9CA3AF" />
-              </TouchableOpacity>
-            </View>
+          <View className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-4 flex-row items-center mt-4">
+            <Feather name={"lock" as any} size={20} color="#9CA3AF" />
+            <TextInput 
+              placeholder="Contraseña" 
+              secureTextEntry 
+              className="ml-3 flex-1 text-base" 
+            />
+            <TouchableOpacity>
+              <Feather name={"eye-off" as any} size={20} color="#9CA3AF" />
+            </TouchableOpacity>
           </View>
 
-          {/* Botón ¿Olvidaste tu contraseña? */}
-          <TouchableOpacity className="items-end mt-2">
-            <Text className="text-sm font-medium text-[#6BA3D6]">¿Olvidaste tu contraseña?</Text>
+          <TouchableOpacity onPress={() => router.push('/recovery' as any)}>
+            <Text className="text-right text-aura-blue-400 font-medium mt-2">¿Olvidaste tu contraseña?</Text>
           </TouchableOpacity>
 
-          {/* Botón Iniciar Sesión */}
-          <TouchableOpacity className="w-full bg-[#6BA3D6] rounded-xl h-14 items-center justify-center flex-row shadow-md mt-6">
+          {/* Botón Principal */}
+          <TouchableOpacity className="bg-aura-blue-400 py-4 rounded-2xl items-center mt-6 flex-row justify-center shadow-md shadow-aura-blue-400/50">
             <Text className="text-white font-bold text-lg mr-2">Iniciar Sesión</Text>
-            <Feather name="arrow-right" size={20} color="white" />
+            <Feather name={"arrow-right" as any} size={20} color="white" />
           </TouchableOpacity>
         </View>
 
-        {/* Registro */}
-        <View className="flex-row justify-center mt-10">
-          <Text className="text-gray-500 text-base">¿No tienes cuenta? </Text>
-          <TouchableOpacity>
-            <Text className="text-[#6BA3D6] font-bold text-base">Regístrate</Text>
+        <View className="flex-row justify-center mt-12">
+          <Text className="text-gray-500">¿No tienes cuenta? </Text>
+          <TouchableOpacity onPress={() => router.push('/register' as any)}>
+            <Text className="text-aura-blue-400 font-bold">Regístrate</Text>
           </TouchableOpacity>
         </View>
-
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

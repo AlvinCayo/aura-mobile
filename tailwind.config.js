@@ -1,6 +1,5 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  // Aquí le decimos que busque en la carpeta "app" y en "src"
   content: [
     "./app/**/*.{js,jsx,ts,tsx}",
     "./src/**/*.{js,jsx,ts,tsx}"
@@ -9,9 +8,18 @@ module.exports = {
     extend: {
       colors: {
         aura: {
-          blue: '#6BA3D6',
-          cream: '#FDF8F3',
-          lavender: '#E8E4F0'
+          blue: {
+            200: '#B8D4E8',
+            400: '#6BA3D6', // Color principal
+          },
+          lavender: {
+            200: '#E8E4F0',
+            400: '#C9B8E8',
+          },
+          cream: {
+            100: '#FDF8F3', // Fondo oficial
+            200: '#F5EDE4',
+          }
         }
       }
     },
