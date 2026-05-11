@@ -30,7 +30,9 @@ export default function RegisterScreen() {
             <TextInput placeholder="Contraseña" secureTextEntry className="ml-3 flex-1 text-base" />
           </View>
 
-          <TouchableOpacity className="bg-aura-blue-400 py-4 rounded-2xl items-center mt-8 shadow-md">
+          <TouchableOpacity 
+          onPress={() => router.replace('/login' as any)}
+          className="bg-aura-blue-400 py-4 rounded-2xl items-center mt-8">
             <Text className="text-white font-bold text-lg">Registrarse</Text>
           </TouchableOpacity>
         </View>

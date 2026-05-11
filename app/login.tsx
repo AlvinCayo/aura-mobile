@@ -53,9 +53,9 @@ export default function LoginScreen() {
           </TouchableOpacity>
 
           {/* Botón Principal */}
-          <TouchableOpacity className="bg-aura-blue-400 py-4 rounded-2xl items-center mt-6 flex-row justify-center shadow-md shadow-aura-blue-400/50">
-            <Text className="text-white font-bold text-lg mr-2">Iniciar Sesión</Text>
-            <Feather name={"arrow-right" as any} size={20} color="white" />
+          <TouchableOpacity onPress={() => router.replace('/onboarding' as any)} // Te lleva al Onboarding tras "loguear"
+          className="bg-aura-blue-400 py-4 rounded-2xl items-center mt-6 shadow-md">
+            <Text className="text-white font-bold text-lg">Iniciar Sesión</Text>
           </TouchableOpacity>
         </View>
 
