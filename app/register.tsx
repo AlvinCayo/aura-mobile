@@ -1,68 +1,210 @@
-import { Feather, FontAwesome } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Button from '../src/components/ui/Button';
+import Input from '../src/components/ui/Input';
+import ProgressSteps from '../src/components/ui/ProgressSteps';
+import { AuraColors } from '../src/theme/colors';
 
-export default function RegisterScreen() {
+const STEPS = [
+  { id: 1, label: 'Personal' },
+  { id: 2, label: 'Preferencias' },
+  { id: 3, label: 'Verificación' },
+];
+
+export default function RegisterEndUserScreen() {
+  const [step, setStep] = useState(1);
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const router = useRouter();
+
+  const handleContinue = () => {
+    if (step < 3) {
+      setStep(step + 1);
+    } else {
+      console.log('Registro completado');
+    }
+  };
+
+  const renderStepContent = () => {
+    switch (step) {
+      case 1:
+        return (
+          <>
+            <Input
+              label="Nombre completo"
+              icon="user"
+              placeholder="Tu nombre completo"
+              value={fullName}
+              onChangeText={setFullName}
+            />
+            <Input
+              label="Correo Electrónico"
+              icon="mail"
+              placeholder="tu@email.com"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <Input
+              label="Teléfono"
+              icon="phone"
+              placeholder="+1 234 567 890"
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+            />
+            <Input
+              label="Contraseña"
+              icon="lock"
+              placeholder="Mínimo 8 caracteres"
+              value={password}
+              onChangeText={setPassword}
+              isPassword
+            />
+            <TouchableOpacity
+              style={styles.termsRow}
+              onPress={() => setAcceptedTerms(!acceptedTerms)}
+            >
+              <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
+                {acceptedTerms && <Feather name="check" size={12} color="white" />}
+              </View>
+              <Text style={styles.termsText}>
+                Acepto los Términos y la Política de Privacidad
+              </Text>
+            </TouchableOpacity>
+          </>
+        );
+      case 2:
+        return (
+          <View style={styles.placeholder}>
+            <Feather name="sliders" size={40} color={AuraColors.textMuted} />
+            <Text style={styles.placeholderText}>Selecciona tus preferencias de belleza</Text>
+          </View>
+        );
+      case 3:
+        return (
+          <View style={styles.placeholder}>
+            <Feather name="mail" size={40} color={AuraColors.textMuted} />
+            <Text style={styles.placeholderText}>Te enviaremos un correo de verificación</Text>
+          </View>
+        );
+    }
+  };
+
   return (
-    <SafeAreaView className="flex-1 bg-aura-cream-100">
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} className="flex-1">
-        <ScrollView className="flex-1 px-8" showsVerticalScrollIndicator={false}>
-          
-          <TouchableOpacity onPress={() => router.back()} className="mt-8 mb-6 w-10 h-10 rounded-full bg-white items-center justify-center shadow-sm border border-gray-100">
-            <Feather name={"arrow-left" as any} size={20} color="#4B5563" />
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardView}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <ProgressSteps steps={STEPS} currentStep={step} />
+
+          <Text style={styles.title}>Crear cuenta</Text>
+          <Text style={styles.subtitle}>
+            Paso {step} de {STEPS.length} – {STEPS[step - 1].label}
+          </Text>
+
+          <View style={styles.formContainer}>{renderStepContent()}</View>
+
+          <Button
+            title={step < 3 ? 'Continuar' : 'Crear Cuenta'}
+            onPress={handleContinue}
+            icon={<Feather name="arrow-right" size={18} color="white" />}
+            style={styles.continueButton}
+          />
+
+          <TouchableOpacity onPress={() => router.push('/login')}>
+            <Text style={styles.loginLink}>¿Ya tienes cuenta? Inicia sesión</Text>
           </TouchableOpacity>
-
-          <Text className="text-3xl font-bold text-gray-900 mb-2">Crear cuenta</Text>
-          <Text className="text-lg text-gray-500 mb-8">Únete a la comunidad AURA</Text>
-
-          <View className="space-y-4">
-            <View className="bg-white border border-gray-100 rounded-aura px-5 py-4 flex-row items-center shadow-sm">
-              <Feather name={"user" as any} size={20} color="#9CA3AF" />
-              <TextInput placeholder="Nombre completo" className="ml-4 flex-1 text-base font-medium" />
-            </View>
-
-            <View className="bg-white border border-gray-100 rounded-aura px-5 py-4 flex-row items-center shadow-sm mt-4">
-              <Feather name={"mail" as any} size={20} color="#9CA3AF" />
-              <TextInput placeholder="Correo electrónico" className="ml-4 flex-1 text-base font-medium" keyboardType="email-address" />
-            </View>
-
-            <View className="bg-white border border-gray-100 rounded-aura px-5 py-4 flex-row items-center shadow-sm mt-4">
-              <Feather name={"lock" as any} size={20} color="#9CA3AF" />
-              <TextInput placeholder="Contraseña" secureTextEntry className="ml-4 flex-1 text-base font-medium" />
-            </View>
-
-            <TouchableOpacity className="bg-aura-blue-400 py-5 rounded-aura items-center mt-6 shadow-lg shadow-aura-blue-400/40">
-              <Text className="text-white font-bold text-lg">Registrarse</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Separador */}
-          <View className="flex-row items-center my-8">
-            <View className="flex-1 h-[1px] bg-gray-200" />
-            <Text className="mx-4 text-gray-400 font-medium">o regístrate con</Text>
-            <View className="flex-1 h-[1px] bg-gray-200" />
-          </View>
-
-          {/* Botones Sociales */}
-          <View className="flex-row gap-4 justify-between">
-            <TouchableOpacity className="flex-1 bg-white border border-gray-100 py-4 rounded-aura flex-row justify-center items-center shadow-sm">
-              <FontAwesome name="google" size={20} color="#DB4437" />
-              <Text className="ml-3 font-bold text-gray-700">Google</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity className="flex-1 bg-white border border-gray-100 py-4 rounded-aura flex-row justify-center items-center shadow-sm">
-              <FontAwesome name="facebook" size={20} color="#4267B2" />
-              <Text className="ml-3 font-bold text-gray-700">Facebook</Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity onPress={() => router.push('/register-center' as any)} className="mt-10 mb-10 p-5 border border-aura-blue-400/30 rounded-aura bg-aura-blue-50/50 shadow-sm">
-            <Text className="text-center text-aura-blue-600 font-bold">¿Eres dueño de un negocio? Registra tu centro aquí</Text>
-          </TouchableOpacity>
-
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: AuraColors.background,
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 24,
+    paddingBottom: 40,
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: AuraColors.textPrimary,
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: AuraColors.textSecondary,
+    marginBottom: 32,
+  },
+  formContainer: {
+    marginBottom: 24,
+  },
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 8,
+    marginBottom: 24,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: AuraColors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: AuraColors.primary,
+    borderColor: AuraColors.primary,
+  },
+  termsText: {
+    flex: 1,
+    fontSize: 13,
+    color: AuraColors.textSecondary,
+  },
+  placeholder: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  placeholderText: {
+    fontSize: 16,
+    color: AuraColors.textMuted,
+    marginTop: 12,
+  },
+  continueButton: {
+    marginBottom: 20,
+  },
+  loginLink: {
+    textAlign: 'center',
+    fontSize: 15,
+    color: AuraColors.primary,
+    fontWeight: '500',
+  },
+});

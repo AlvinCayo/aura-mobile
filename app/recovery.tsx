@@ -1,32 +1,113 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { KeyboardAvoidingView, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Button from '../src/components/ui/Button';
+import Input from '../src/components/ui/Input';
+import { AuraColors } from '../src/theme/colors';
 
-export default function RecoveryScreen() {
+export default function PasswordRecoveryScreen() {
+  const [email, setEmail] = useState('');
+  const router = useRouter();
+
   return (
-    <SafeAreaView className="flex-1 bg-aura-cream-100">
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} className="flex-1 px-8">
-        
-        <TouchableOpacity onPress={() => router.back()} className="mt-8 mb-8 w-10 h-10 rounded-full bg-white items-center justify-center shadow-sm border border-gray-100">
-          <Feather name={"arrow-left" as any} size={20} color="#4B5563" />
-        </TouchableOpacity>
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardView}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Feather name="arrow-left" size={20} color={AuraColors.textPrimary} />
+          </TouchableOpacity>
 
-        <Text className="text-3xl font-bold text-gray-900 mb-3 tracking-tight">Recuperar acceso</Text>
-        <Text className="text-lg text-gray-500 mb-10 leading-6">
-          Ingresa tu correo electrónico asociado y te enviaremos instrucciones para restablecer tu contraseña.
-        </Text>
+          <View style={styles.iconCircle}>
+            <Feather name="lock" size={36} color={AuraColors.primary} />
+          </View>
+          <Text style={styles.title}>Recuperar contraseña</Text>
+          <Text style={styles.description}>
+            Ingresa tu correo electrónico y te enviaremos instrucciones para restablecerla.
+          </Text>
 
-        <View className="bg-white border border-gray-100 rounded-aura px-5 py-4 flex-row items-center shadow-sm">
-          <Feather name={"mail" as any} size={20} color="#9CA3AF" />
-          <TextInput placeholder="tu@email.com" className="ml-4 flex-1 text-base font-medium" keyboardType="email-address" autoCapitalize="none" />
-        </View>
+          <Input
+            label="Correo Electrónico"
+            icon="mail"
+            placeholder="tu@email.com"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
 
-        <TouchableOpacity className="bg-aura-blue-400 py-5 rounded-aura items-center mt-8 shadow-lg shadow-aura-blue-400/40">
-          <Text className="text-white font-bold text-lg">Enviar enlace</Text>
-        </TouchableOpacity>
+          <Button
+            title="Enviar Instrucciones"
+            onPress={() => console.log('Recuperar:', email)}
+            icon={<Feather name="arrow-right" size={18} color="white" />}
+            style={styles.submitButton}
+          />
 
+          <TouchableOpacity onPress={() => router.push('/login')}>
+            <Text style={styles.backToLogin}>¿Recordaste tu contraseña? Iniciar sesión</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: AuraColors.background },
+  keyboardView: { flex: 1 },
+  scrollContent: { padding: 24, paddingBottom: 40, alignItems: 'center' },
+  backButton: {
+    alignSelf: 'flex-start',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: AuraColors.card,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: AuraColors.border,
+    marginBottom: 24,
+  },
+  iconCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: AuraColors.primaryLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: AuraColors.textPrimary,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  description: {
+    fontSize: 15,
+    color: AuraColors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 22,
+    paddingHorizontal: 10,
+  },
+  submitButton: { width: '100%', marginBottom: 24 },
+  backToLogin: {
+    fontSize: 14,
+    color: AuraColors.primary,
+    fontWeight: '500',
+  },
+});

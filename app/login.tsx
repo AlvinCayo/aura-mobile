@@ -1,70 +1,97 @@
-import { Feather, FontAwesome } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Button from '../src/components/ui/Button';
+import Input from '../src/components/ui/Input';
+import SocialButton from '../src/components/ui/SocialButton';
+import { AuraColors } from '../src/theme/colors';
 
 export default function LoginScreen() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const router = useRouter();
+
+  const handleLogin = () => {
+    console.log('Login con:', email, password);
+  };
+
   return (
-    <SafeAreaView className="flex-1 bg-aura-cream-100">
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} className="flex-1">
-        <ScrollView className="flex-1 px-8" showsVerticalScrollIndicator={false}>
-          
-          {/* Header Identidad AURA */}
-          <View className="mt-16 mb-12 items-center flex-row justify-center gap-3">
-            <View className="w-14 h-14 rounded-aura bg-aura-blue-400 items-center justify-center shadow-md">
-              <Feather name={"sparkles" as any} size={28} color="white" />
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardView}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.logoSection}>
+            <View style={styles.logoCircle}>
+              {/* Fix: cast name to any */}
+              <Feather name={'sparkles' as any} size={28} color={AuraColors.primary} />
             </View>
-            <Text className="text-4xl font-bold italic text-aura-blue-400 tracking-tighter">AURA</Text>
+            <Text style={styles.appName}>AURA</Text>
+            <Text style={styles.tagline}>Bienestar & Estética</Text>
           </View>
 
-          <Text className="text-3xl font-bold text-gray-900 mb-2">Bienvenido</Text>
-          <Text className="text-lg text-gray-500 mb-10">Inicia sesión en tu cuenta</Text>
+          <Text style={styles.title}>Bienvenido de vuelta</Text>
+          <Text style={styles.subtitle}>Inicia sesión para continuar</Text>
 
-          {/* Formulario Estilo v0 */}
-          <View className="space-y-4">
-            <View className="bg-white border border-gray-100 rounded-aura px-5 py-4 flex-row items-center shadow-sm">
-              <Feather name={"mail" as any} size={20} color="#9CA3AF" />
-              <TextInput placeholder="Correo electrónico" className="ml-4 flex-1 text-base font-medium" keyboardType="email-address" />
-            </View>
-
-            <View className="bg-white border border-gray-100 rounded-aura px-5 py-4 flex-row items-center shadow-sm mt-4">
-              <Feather name={"lock" as any} size={20} color="#9CA3AF" />
-              <TextInput placeholder="Contraseña" secureTextEntry className="ml-4 flex-1 text-base font-medium" />
-            </View>
-
-            <TouchableOpacity onPress={() => router.push('/recovery' as any)} className="py-2">
-              <Text className="text-right text-aura-blue-400 font-semibold text-sm">¿Olvidaste tu contraseña?</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity className="bg-aura-blue-400 py-5 rounded-aura items-center mt-6 shadow-lg shadow-aura-blue-400/40">
-              <Text className="text-white font-bold text-lg">Iniciar Sesión</Text>
-            </TouchableOpacity>
+          <View style={styles.socialRow}>
+            <SocialButton provider="google" onPress={() => {}} />
+            <SocialButton provider="facebook" onPress={() => {}} />
           </View>
 
-          {/* Separador */}
-          <View className="flex-row items-center my-10">
-            <View className="flex-1 h-[1px] bg-gray-200" />
-            <Text className="mx-4 text-gray-400 font-medium">o continuar con</Text>
-            <View className="flex-1 h-[1px] bg-gray-200" />
+          <View style={styles.separator}>
+            <View style={styles.separatorLine} />
+            <Text style={styles.separatorText}>o continúa con email</Text>
+            <View style={styles.separatorLine} />
           </View>
 
-          {/* Botones Sociales Faltantes */}
-          <View className="flex-row gap-4 justify-between">
-            <TouchableOpacity className="flex-1 bg-white border border-gray-100 py-4 rounded-aura flex-row justify-center items-center shadow-sm">
-              <FontAwesome name="google" size={20} color="#DB4437" />
-              <Text className="ml-3 font-bold text-gray-700">Google</Text>
-            </TouchableOpacity>
+          <Input
+            label="Correo Electrónico"
+            icon="mail"
+            placeholder="tu@email.com"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
 
-            <TouchableOpacity className="flex-1 bg-white border border-gray-100 py-4 rounded-aura flex-row justify-center items-center shadow-sm">
-              <FontAwesome name="facebook" size={20} color="#4267B2" />
-              <Text className="ml-3 font-bold text-gray-700">Facebook</Text>
-            </TouchableOpacity>
-          </View>
+          <Input
+            label="Contraseña"
+            icon="lock"
+            placeholder="Tu contraseña"
+            value={password}
+            onChangeText={setPassword}
+            isPassword
+          />
 
-          <View className="flex-row justify-center mt-12 mb-10">
-            <Text className="text-gray-500 text-base">¿No tienes cuenta? </Text>
-            <TouchableOpacity onPress={() => router.push('/register' as any)}>
-              <Text className="text-aura-blue-400 font-bold text-base">Regístrate</Text>
+          <TouchableOpacity onPress={() => router.push('/recovery')}>
+            <Text style={styles.forgotPassword}>¿Olvidaste tu contraseña?</Text>
+          </TouchableOpacity>
+
+          <Button
+            title="Iniciar Sesión"
+            onPress={handleLogin}
+            icon={<Feather name="arrow-right" size={18} color="white" />}
+            style={styles.loginButton}
+          />
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>¿No tienes cuenta? </Text>
+            <TouchableOpacity onPress={() => router.push('/register')}>
+              <Text style={styles.footerLink}>Regístrate</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -72,3 +99,102 @@ export default function LoginScreen() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: AuraColors.background,
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 40,
+    paddingBottom: 32,
+  },
+  logoSection: {
+    alignItems: 'center',
+    marginBottom: 44,
+  },
+  logoCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    backgroundColor: AuraColors.primaryLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: AuraColors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  appName: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: AuraColors.textPrimary,
+  },
+  tagline: {
+    fontSize: 14,
+    color: AuraColors.textSecondary,
+    marginTop: 2,
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: AuraColors.textPrimary,
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: AuraColors.textSecondary,
+    marginBottom: 32,
+  },
+  socialRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 24,
+  },
+  separator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 28,
+  },
+  separatorLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: AuraColors.border,
+  },
+  separatorText: {
+    fontSize: 14,
+    color: AuraColors.textMuted,
+  },
+  forgotPassword: {
+    fontSize: 14,
+    color: AuraColors.primary,
+    fontWeight: '500',
+    textAlign: 'right',
+    marginTop: 4,
+    marginBottom: 20,
+  },
+  loginButton: {
+    marginBottom: 24,
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  footerText: {
+    fontSize: 15,
+    color: AuraColors.textSecondary,
+  },
+  footerLink: {
+    fontSize: 15,
+    color: AuraColors.primary,
+    fontWeight: '600',
+  },
+});
