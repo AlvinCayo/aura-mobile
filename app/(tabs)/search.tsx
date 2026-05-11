@@ -9,10 +9,10 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import CategoryCard from '../src/components/ui/CategoryCard';
-import CenterCard from '../src/components/ui/CenterCard';
-import SearchBar from '../src/components/ui/SearchBar';
-import { AuraColors } from '../src/theme/colors';
+import CategoryCard from '../../src/components/ui/CategoryCard';
+import CenterCard from '../../src/components/ui/CenterCard';
+import SearchBar from '../../src/components/ui/SearchBar';
+import { AuraColors } from '../../src/theme/colors';
 
 const RECENT_SEARCHES = ['Facial limpieza', 'Masaje relajante', 'Peluquería hombre'];
 const POPULAR_CATEGORIES = [
