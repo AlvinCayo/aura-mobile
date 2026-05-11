@@ -1,10 +1,12 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
+import { View } from 'react-native';
+import DevFloatingButton from '../src/components/ui/DevFloatingButton';
 
 export default function RootLayout() {
   return (
-    <>
+    <View style={{ flex: 1 }}>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
@@ -16,12 +18,16 @@ export default function RootLayout() {
         <Stack.Screen name="recovery" />
         <Stack.Screen name="edit-profile" />
         <Stack.Screen name="center/[id]" />
-        <Stack.Screen name="booking/[centerId]" />
-        <Stack.Screen name="category/[id]" />
-        <Stack.Screen name="map" />
         <Stack.Screen name="center/[id]/gallery" />
         <Stack.Screen name="center/[id]/reviews" />
+        <Stack.Screen name="category/[id]" />
+        <Stack.Screen name="map" />
+        <Stack.Screen name="booking/[centerId]" />
+        <Stack.Screen name="admin" />
       </Stack>
-    </>
+
+      {/* Botón flotante de desarrollo */}
+      <DevFloatingButton />
+    </View>
   );
 }
