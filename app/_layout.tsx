@@ -24,6 +24,16 @@ export default function RootLayout() {
         <Stack.Screen name="map" />
         <Stack.Screen name="booking/[centerId]" />
         <Stack.Screen name="admin" />
+        <Stack.Screen name="admin-platform" />
+        <Stack.Screen name="appointments/[id]" />
+        <Stack.Screen name="booking/confirmation" />
+        <Stack.Screen name="qr-scanner" />
+        <Stack.Screen name="facial-analysis" />
+        <Stack.Screen name="review/[centerId]" />
+        <Stack.Screen name="favorites" />
+        <Stack.Screen name="notifications" />
+        <Stack.Screen name="admin-platform/reports" />
+        <Stack.Screen name="admin-platform/logs" />
       </Stack>
 
       {/* Botón flotante de desarrollo */}

@@ -10,53 +10,86 @@ export default function DevFloatingButton() {
 
   const navigateTo = (route: string) => {
     setExpanded(false);
-    router.push(route as any); // usamos push para mantener historial, o replace si prefieres
+    router.push(route as any);
+  };
+
+  const navigateReplace = (route: string) => {
+    setExpanded(false);
+    router.replace(route as any);
   };
 
   return (
     <View style={styles.container} pointerEvents="box-none">
       {expanded && (
         <View style={styles.menu}>
-          {/* Opción 1: Cliente (Tabs) */}
+          {/* === Roles principales === */}
+          <Text style={styles.menuLabel}>ROLES</Text>
+
           <TouchableOpacity
             style={[styles.menuButton, styles.clientButton]}
-            onPress={() => {
-              setExpanded(false);
-              router.replace('/(tabs)');
-            }}
+            onPress={() => navigateReplace('/(tabs)')}
           >
             <Feather name="user" size={18} color="white" />
             <Text style={styles.menuText}>Cliente (Tabs)</Text>
           </TouchableOpacity>
 
-          {/* Opción 2: Centro - Gestión (Admin Dashboard) */}
           <TouchableOpacity
             style={[styles.menuButton, styles.centerButton]}
-            onPress={() => {
-              setExpanded(false);
-              router.replace('/admin/dashboard');
-            }}
+            onPress={() => navigateReplace('/admin/dashboard')}
           >
             <Feather name="briefcase" size={18} color="white" />
             <Text style={styles.menuText}>Centro (Gestión)</Text>
           </TouchableOpacity>
 
-          {/* Opción 3: Centro - Registro */}
           <TouchableOpacity
-            style={[styles.menuButton, styles.registerCenterButton]}
-            onPress={() => navigateTo('/register-center')}
+            style={[styles.menuButton, styles.adminButton]}
+            onPress={() => navigateReplace('/admin-platform/dashboard')}
           >
-            <Feather name="plus-square" size={18} color="white" />
-            <Text style={styles.menuText}>Centro (Registro)</Text>
+            <Feather name="shield" size={18} color="white" />
+            <Text style={styles.menuText}>Admin (Plataforma)</Text>
           </TouchableOpacity>
 
-          {/* Opción 4: Ver un centro público (ejemplo) */}
+          {/* === Funciones rápidas === */}
+          <Text style={[styles.menuLabel, { marginTop: 8 }]}>FUNCIONES</Text>
+
           <TouchableOpacity
-            style={[styles.menuButton, styles.publicCenterButton]}
-            onPress={() => navigateTo('/center/1')}
+            style={[styles.menuButton, styles.qrButton]}
+            onPress={() => navigateTo('/qr-scanner')}
           >
-            <Feather name="eye" size={18} color="white" />
-            <Text style={styles.menuText}>Ver centro público</Text>
+            <Feather name="maximize" size={18} color="white" />
+            <Text style={styles.menuText}>Escanear QR</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuButton, styles.facialButton]}
+            onPress={() => navigateTo('/facial-analysis')}
+          >
+            <Feather name="camera" size={18} color="white" />
+            <Text style={styles.menuText}>Análisis Facial</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuButton, styles.reviewButton]}
+            onPress={() => navigateTo('/review/1')}
+          >
+            <Feather name="edit-3" size={18} color="white" />
+            <Text style={styles.menuText}>Dejar Reseña (ej.)</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuButton, styles.favButton]}
+            onPress={() => navigateTo('/favorites')}
+          >
+            <Feather name="heart" size={18} color="white" />
+            <Text style={styles.menuText}>Favoritos</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuButton, styles.notifButton]}
+            onPress={() => navigateTo('/notifications')}
+          >
+            <Feather name="bell" size={18} color="white" />
+            <Text style={styles.menuText}>Notificaciones</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -87,6 +120,15 @@ const styles = StyleSheet.create({
   menu: {
     marginBottom: 12,
     gap: 8,
+    alignItems: 'flex-end',
+  },
+  menuLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: AuraColors.textMuted,
+    letterSpacing: 1,
+    marginRight: 8,
+    marginBottom: 2,
   },
   menuButton: {
     flexDirection: 'row',
@@ -101,23 +143,22 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
-  clientButton: {
-    backgroundColor: AuraColors.success,
-  },
-  centerButton: {
-    backgroundColor: '#3B82F6', // azul
-  },
-  registerCenterButton: {
-    backgroundColor: '#8B5CF6', // violeta
-  },
-  publicCenterButton: {
-    backgroundColor: '#6366F1', // índigo
-  },
   menuText: {
     color: 'white',
     fontWeight: '600',
     fontSize: 14,
   },
+  // Roles
+  clientButton: { backgroundColor: AuraColors.success },
+  centerButton: { backgroundColor: '#3B82F6' },
+  adminButton: { backgroundColor: '#EF4444' },
+  // Funciones
+  qrButton: { backgroundColor: '#10B981' },
+  facialButton: { backgroundColor: '#8B5CF6' },
+  reviewButton: { backgroundColor: '#F59E0B' },
+  favButton: { backgroundColor: '#EC4899' },
+  notifButton: { backgroundColor: '#6366F1' },
+  // FAB
   fab: {
     width: 56,
     height: 56,

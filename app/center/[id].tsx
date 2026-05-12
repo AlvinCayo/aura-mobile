@@ -2,13 +2,13 @@ import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-    Dimensions,
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Dimensions,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Rating from '../../src/components/ui/Rating';
@@ -48,8 +48,6 @@ export default function CenterDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-
-  // Aquí después cargarías los datos reales según el id
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -127,6 +125,15 @@ export default function CenterDetailScreen() {
           ))}
           <TouchableOpacity style={styles.seeAllReviews}>
             <Text style={styles.seeAllText}>Ver todas las reseñas</Text>
+          </TouchableOpacity>
+
+          {/* NUEVO: Botón para dejar reseña */}
+          <TouchableOpacity
+            style={styles.leaveReviewButton}
+            onPress={() => router.push(`/review/${CENTER_DATA.id}` as any)}
+          >
+            <Feather name="edit-3" size={16} color="white" />
+            <Text style={styles.leaveReviewText}>Dejar reseña</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -254,6 +261,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: AuraColors.primary,
     fontWeight: '500',
+  },
+  // Nuevos estilos para el botón de dejar reseña
+  leaveReviewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AuraColors.accent,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 16,
+    gap: 8,
+  },
+  leaveReviewText: {
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '600',
   },
   bottomBar: {
     position: 'absolute',

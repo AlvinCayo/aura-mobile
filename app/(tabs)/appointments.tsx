@@ -2,11 +2,11 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-    FlatList,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AppointmentCard from '../../src/components/ui/AppointmentCard';
@@ -95,7 +95,7 @@ export default function AppointmentsScreen() {
             date={item.date}
             time={item.time}
             status={item.status}
-            onPress={() => console.log('Ver cita', item.id)}
+            onPress={() => router.push(`/appointments/${item.id}` as any)}
           />
         )}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
