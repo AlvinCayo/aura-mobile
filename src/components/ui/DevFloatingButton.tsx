@@ -91,6 +91,22 @@ export default function DevFloatingButton() {
             <Feather name="bell" size={18} color="white" />
             <Text style={styles.menuText}>Notificaciones</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuButton, styles.resultsButtonDev]}
+            onPress={() => navigateTo('/analysis-results')}
+          >
+            <Feather name="bar-chart-2" size={18} color="white" />
+            <Text style={styles.menuText}>Resultados Análisis</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuButton, styles.arButtonDev]}
+            onPress={() => navigateTo('/ar-simulation')}
+          >
+            <Feather name="rotate-cw" size={18} color="white" />
+            <Text style={styles.menuText}>Simulación AR</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -158,6 +174,8 @@ const styles = StyleSheet.create({
   reviewButton: { backgroundColor: '#F59E0B' },
   favButton: { backgroundColor: '#EC4899' },
   notifButton: { backgroundColor: '#6366F1' },
+  resultsButtonDev: { backgroundColor: '#0EA5E9' },
+  arButtonDev: { backgroundColor: '#D946EF' },
   // FAB
   fab: {
     width: 56,

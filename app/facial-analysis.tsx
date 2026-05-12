@@ -28,7 +28,15 @@ export default function FacialAnalysisScreen() {
           <Text style={styles.previewHint}>Vista previa del análisis</Text>
         </View>
         <TouchableOpacity style={styles.analyzeButton}>
-          <Text style={styles.analyzeText}>Iniciar análisis</Text>
+          <Text style={styles.analyzeText}>Iniciar análisis (simulado)</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.resultsButton}
+          onPress={() => router.push('/analysis-results' as any)}
+        >
+          <Feather name="bar-chart-2" size={18} color="white" />
+          <Text style={styles.resultsText}>Ver resultados de ejemplo</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -38,7 +46,16 @@ export default function FacialAnalysisScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: AuraColors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24 },
-  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: AuraColors.card, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: AuraColors.border },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: AuraColors.card,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: AuraColors.border,
+  },
   title: { fontSize: 20, fontWeight: '700' },
   content: { paddingHorizontal: 24, paddingTop: 20 },
   uploadArea: {
@@ -69,4 +86,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   analyzeText: { color: 'white', fontSize: 16, fontWeight: '600' },
+  resultsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: AuraColors.success,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 12,
+    gap: 8,
+  },
+  resultsText: { color: 'white', fontSize: 15, fontWeight: '600' },
 });
