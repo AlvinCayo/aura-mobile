@@ -107,6 +107,13 @@ export default function DevFloatingButton() {
             <Feather name="rotate-cw" size={18} color="white" />
             <Text style={styles.menuText}>Simulación AR</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+  style={[styles.menuButton, { backgroundColor: '#14B8A6' }]}
+  onPress={() => navigateTo('/geo-services')}
+>
+  <Feather name="compass" size={18} color="white" />
+  <Text style={styles.menuText}>Geolocalización y Servicios</Text>
+</TouchableOpacity>
         </View>
       )}
 

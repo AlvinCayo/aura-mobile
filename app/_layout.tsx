@@ -34,6 +34,7 @@ export default function RootLayout() {
   <Stack.Screen name="notifications" />
   <Stack.Screen name="analysis-results" />
   <Stack.Screen name="ar-simulation" />
+  <Stack.Screen name="geo-services" />
 </Stack>
 
       {/* Botón flotante de desarrollo */}
