@@ -37,7 +37,6 @@ export default function EditProfileScreen() {
 
   const loadProfile = async () => {
     if (!user) return;
-    
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -97,10 +96,14 @@ export default function EditProfileScreen() {
 
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
       
-      // Actualizamos la tabla de perfiles inmediatamente con la nueva foto
+      // 1. Actualizamos la tabla
       await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user?.id);
-      setAvatarUrl(publicUrl);
       
+      // 2. ¡CLAVE! Actualizamos los metadatos globales para que el perfil de la app cambie al instante
+      await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
+      await supabase.auth.refreshSession(); // Forzamos el refresco visual
+
+      setAvatarUrl(publicUrl);
     } catch (error: any) {
       Alert.alert('Error', 'No se pudo subir la imagen.');
     } finally {
@@ -116,7 +119,7 @@ export default function EditProfileScreen() {
 
     setUpdating(true);
     try {
-      // 1. Actualizar tabla pública de perfiles
+      // 1. Actualizar tabla pública
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
@@ -127,12 +130,14 @@ export default function EditProfileScreen() {
 
       if (profileError) throw profileError;
 
-      // 2. Actualizar metadatos de autenticación (para que el nombre cambie en toda la app)
+      // 2. ¡CLAVE! Actualizar metadatos y refrescar para que la app reaccione
       const { error: authError } = await supabase.auth.updateUser({
         data: { full_name: fullName }
       });
 
       if (authError) throw authError;
+
+      await supabase.auth.refreshSession(); // Forzamos a la app a "darse cuenta" del cambio
 
       Alert.alert('Éxito', 'Perfil actualizado correctamente.', [
         { text: 'OK', onPress: () => router.back() }

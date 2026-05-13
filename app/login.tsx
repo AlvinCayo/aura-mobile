@@ -34,16 +34,12 @@ export default function LoginScreen() {
     if (error) {
       Alert.alert('Error al iniciar sesión', error.message);
     } else {
-      // Para el inicio de sesión por email sí podemos mantener el replace si tu _layout lo permite,
-      // pero si el guardia _layout.tsx ya lo maneja, podrías omitirlo. Lo mantenemos por seguridad.
       router.replace('/(tabs)');
     }
   };
 
-  // Función MÁGICA actualizada para soportar el estándar de seguridad PKCE
   const createSessionFromUrl = async (url: string) => {
     const params: any = {};
-    // Detectamos si la URL usa ?code= (PKCE) o #access_token= (Implicit)
     const queryString = url.includes('#') ? url.split('#')[1] : url.split('?')[1];
     
     if (queryString) {
@@ -53,12 +49,10 @@ export default function LoginScreen() {
       });
     }
 
-    // Intercambio PKCE (El nuevo estándar que usa Google/Supabase)
     if (params.code) {
       const { error } = await supabase.auth.exchangeCodeForSession(params.code);
       if (error) throw error;
     } 
-    // Intercambio de Token Directo (Método clásico)
     else if (params.access_token && params.refresh_token) {
       const { error } = await supabase.auth.setSession({
         access_token: params.access_token,
@@ -74,8 +68,8 @@ export default function LoginScreen() {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { 
-        redirectTo: redirectUrl,
-        queryParams: { prompt: 'select_account' } 
+        redirectTo: redirectUrl
+        // ELIMINADO EL PROMPT PARA QUE GOOGLE USE LA CUENTA YA REGISTRADA EN EL CELULAR
       },
     });
 
@@ -87,11 +81,11 @@ export default function LoginScreen() {
     if (data?.url) {
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
       
-      // Capturamos el result.url y creamos la sesión
       if (result.type === 'success' && result.url) {
         try {
           await createSessionFromUrl(result.url);
-          // ¡Eliminado el router.replace para evitar el bucle! El _layout.tsx detectará el login automáticamente.
+          // RESTAURAMOS EL EMPUJÓN HACIA ADENTRO PARA EVITAR QUE SE CONGELE
+          router.replace('/(tabs)');
         } catch (e: any) {
           Alert.alert('Error de Sesión', 'No se pudo iniciar sesión con Google.');
         }
@@ -118,7 +112,7 @@ export default function LoginScreen() {
       if (result.type === 'success' && result.url) {
         try {
           await createSessionFromUrl(result.url);
-          // ¡Eliminado el router.replace para evitar el bucle!
+          router.replace('/(tabs)');
         } catch (e: any) {
           Alert.alert('Error de Sesión', 'No se pudo iniciar sesión con Facebook.');
         }

@@ -82,7 +82,7 @@ export default function BecomeCenterScreen() {
     setIsSubmitting(true);
 
     try {
-      // 1. Subir Licencia con FormData (Evita Network Request Failed)
+      // 1. Subir Licencia
       let licenseUrl = '';
       if (licenseFile) {
         const formData = new FormData();
@@ -93,9 +93,15 @@ export default function BecomeCenterScreen() {
         licenseUrl = supabase.storage.from('licenses').getPublicUrl(fileName).data.publicUrl;
       }
 
-      // 2. Crear Centro
+      // 2. Crear Centro (AÑADIMOS payment_qr_url: '' PARA SOLUCIONAR EL ERROR)
       const { data: centerData, error: centerError } = await supabase.from('centers').insert({
-        owner_id: user.id, name: centerName, address, description, license_url: licenseUrl, status: 'pending',
+        owner_id: user.id, 
+        name: centerName, 
+        address, 
+        description, 
+        license_url: licenseUrl, 
+        status: 'pending',
+        payment_qr_url: '' // <- Solución al not-null constraint
       }).select('id').single();
 
       if (centerError) throw centerError;

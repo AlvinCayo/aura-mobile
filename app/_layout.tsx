@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
+import * as Linking from 'expo-linking';
 import { SplashScreen, Stack, useRouter, useSegments } from 'expo-router';
 import React, { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
@@ -15,10 +16,45 @@ function InitialLayout() {
   const { session, initialized } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  
+  // NUEVO: Atrapamos la URL con la que se abrió la aplicación (ej. desde el correo)
+  const url = Linking.useURL(); 
 
-useEffect(() => {
+  useEffect(() => {
     if (!initialized) return;
 
+    let isRecoveryScenario = false;
+
+    // 1. Parseo manual del Deep Link para recuperación de contraseñas
+    if (url) {
+      const params: any = {};
+      const queryString = url.includes('#') ? url.split('#')[1] : url.split('?')[1];
+      
+      if (queryString) {
+        queryString.split('&').forEach(pair => {
+          const [key, value] = pair.split('=');
+          params[key] = value;
+        });
+      }
+
+      // Detectamos si el link entrante es de recuperación
+      if (params.type === 'recovery' || url.includes('recovery') || url.includes('reset-password')) {
+        isRecoveryScenario = true;
+        
+        // Extraemos los tokens y creamos una sesión temporal para poder cambiar la clave
+        if (params.access_token) {
+          supabase.auth.setSession({
+            access_token: params.access_token,
+            refresh_token: params.refresh_token,
+          });
+        }
+        
+        // Forzamos el salto a la pantalla de resetear contraseña
+        router.replace('/reset-password' as any);
+      }
+    }
+
+    // 2. Escuchador oficial de Supabase
     const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
         router.replace('/reset-password' as any);
@@ -30,18 +66,25 @@ useEffect(() => {
     // Lista de rutas exclusivas para usuarios NO logueados
     const publicRoutes = ['login', 'register', 'recovery', 'reset-password'];
 
+    // 3. EXCEPCIÓN CRÍTICA: Si el usuario está recuperando su contraseña o ya está en esa pantalla, 
+    // pausamos al guardia de seguridad para que no lo expulse al Login ni a los Tabs.
+    if (isRecoveryScenario || currentSegment === 'reset-password') {
+      return () => {
+        authListener.subscription.unsubscribe();
+      };
+    }
+
+    // 4. Lógica original del Guardia
     if (session && publicRoutes.includes(currentSegment)) {
-      // Si ya inició sesión e intenta ir al Login/Registro, lo mandamos a Tabs
       router.replace('/(tabs)');
     } else if (!session && !publicRoutes.includes(currentSegment) && currentSegment !== undefined) {
-      // Si NO ha iniciado sesión e intenta ir a Tabs, Become Center o Admin, lo mandamos a Login
       router.replace('/login');
     }
 
     return () => {
       authListener.subscription.unsubscribe();
     };
-  }, [session, initialized, segments]);
+  }, [session, initialized, segments, url]);
 
   // Mientras inicializa la autenticación, mostramos la pantalla de carga
   if (!initialized) {
@@ -73,7 +116,7 @@ useEffect(() => {
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
-    // Aquí puedes cargar tus fuentes personalizadas si las tienes (ej. 'Inter-Bold': require('./assets/fonts/Inter-Bold.ttf'))
+    // Aquí puedes cargar tus fuentes personalizadas si las tienes
   });
 
   useEffect(() => {
