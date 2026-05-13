@@ -109,17 +109,22 @@ export default function RegisterCenterScreen() {
     }
 
     // 1. Crear usuario y centro en estado "pending"
-    const { error } = await signUp(email, password, ownerFullName, 'center_owner');
+    const { data: signUpData, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: ownerFullName, role: 'center_owner' } },
+    });
     if (error) {
       Alert.alert('Error al registrar', error.message);
       return;
     }
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      Alert.alert('Error', 'No se pudo obtener el usuario.');
-      return;
-    }
+const user = signUpData.user;
+if (!user) {
+  Alert.alert('Error', 'No se pudo crear el usuario.');
+  return;
+}
+// A partir de aquí usa `user.id` directamente
 
     // 2. Subir licencia si existe
     let licenseUrl = '';

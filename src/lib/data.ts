@@ -75,3 +75,72 @@ export async function fetchCategories() {
   const categories = [...new Set(data.map((c: any) => c.category).filter(Boolean))];
   return { data: categories, error: null };
 }
+
+// Obtener horarios ocupados de un centro para una fecha dada
+export async function fetchBookedSlots(centerId: string, date: string) {
+  const { data, error } = await supabase
+    .from('appointments')
+    .select('start_time, end_time')
+    .eq('center_id', centerId)
+    .eq('appointment_date', date)
+    .in('status', ['pending', 'confirmed']);
+  return { data, error };
+}
+
+// Crear una cita (solicitud)
+export async function createAppointment(appointment: {
+  center_id: string;
+  service_id?: string;
+  client_id: string;
+  appointment_date: string;
+  start_time: string;
+  end_time: string;
+  notes?: string;
+}) {
+  const { data, error } = await supabase.from('appointments').insert({
+    ...appointment,
+    status: 'pending',
+  }).select().single();
+  return { data, error };
+}
+
+// Obtener citas del cliente actual
+export async function fetchMyAppointments(clientId: string) {
+  const { data, error } = await supabase
+    .from('appointments')
+    .select('*, center:center_id(name), service:service_id(name, price)')
+    .eq('client_id', clientId)
+    .order('appointment_date', { ascending: false });
+  return { data, error };
+}
+
+// Obtener citas por centro (para el panel del centro)
+export async function fetchCenterAppointments(centerId: string, statusFilter?: string) {
+  let query = supabase
+    .from('appointments')
+    .select('*, client:client_id(full_name, email), service:service_id(name)')
+    .eq('center_id', centerId);
+  if (statusFilter) query = query.eq('status', statusFilter);
+  query = query.order('created_at', { ascending: false });
+  const { data, error } = await query;
+  return { data, error };
+}
+
+// Actualizar estado de cita
+export async function updateAppointmentStatus(id: string, status: string) {
+  const { error } = await supabase
+    .from('appointments')
+    .update({ status })
+    .eq('id', id);
+  return { error };
+}
+
+// Crear pago
+export async function createPayment(appointmentId: string, amount: number, commission: number) {
+  const { data, error } = await supabase.from('payments').insert({
+    appointment_id: appointmentId,
+    amount,
+    commission,
+  }).select().single();
+  return { data, error };
+}

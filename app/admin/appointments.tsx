@@ -1,136 +1,101 @@
 import { Feather } from '@expo/vector-icons';
-import React, { useState } from 'react';
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AdminAppointmentItem from '../../src/components/ui/AdminAppointmentItem';
+import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
-const ALL_APPOINTMENTS = [
-  { id: '1', clientName: 'María García', serviceName: 'Limpieza facial', time: '10:00', status: 'pending' as const },
-  { id: '2', clientName: 'Carlos López', serviceName: 'Masaje relajante', time: '11:30', status: 'confirmed' as const },
-  { id: '3', clientName: 'Ana Martínez', serviceName: 'Peeling químico', time: '13:00', status: 'completed' as const },
-  { id: '4', clientName: 'Lucía Fernández', serviceName: 'Manicura', time: '09:00', status: 'cancelled' as const },
-];
+export default function AdminAppointmentsScreen() {
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
-const FILTERS = [
-  { key: 'all', label: 'Todas' },
-  { key: 'pending', label: 'Pendientes' },
-  { key: 'confirmed', label: 'Confirmadas' },
-  { key: 'completed', label: 'Completadas' },
-  { key: 'cancelled', label: 'Canceladas' },
-] as const;
+  const fetchAppointments = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('appointments')
+      .select('*, client:client_id(full_name, email), service:service_id(name)')
+      .eq('center_id', 'ID_DEL_CENTRO') // Reemplazar por el ID del centro del usuario logueado
+      .in('status', ['pending', 'confirmed'])
+      .order('created_at', { ascending: false });
 
-type FilterKey = typeof FILTERS[number]['key'];
+    if (error) Alert.alert('Error', error.message);
+    else setAppointments(data || []);
+    setLoading(false);
+  };
 
-export default function AppointmentsManagerScreen() {
-  const [filter, setFilter] = useState<FilterKey>('all');
+  useEffect(() => {
+    fetchAppointments();
+  }, []);
 
-  const filtered = filter === 'all'
-    ? ALL_APPOINTMENTS
-    : ALL_APPOINTMENTS.filter((a) => a.status === filter);
+  const handleUpdate = (id: string, status: string) => {
+    Alert.alert(status === 'confirmed' ? 'Aprobar cita' : 'Rechazar cita', '¿Estás seguro?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Sí',
+        onPress: async () => {
+          const { error } = await supabase.from('appointments').update({ status }).eq('id', id);
+          if (error) Alert.alert('Error', error.message);
+          else fetchAppointments();
+        },
+      },
+    ]);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Gestión de citas</Text>
+        <Text style={styles.title}>Solicitudes de cita</Text>
       </View>
-
-      {/* Filtros horizontales */}
       <FlatList
-        horizontal
-        data={FILTERS}
-        keyExtractor={(item) => item.key}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filtersList}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.filterChip, filter === item.key && styles.filterChipActive]}
-            onPress={() => setFilter(item.key)}
-          >
-            <Text style={[styles.filterText, filter === item.key && styles.filterTextActive]}>
-              {item.label}
-            </Text>
-          </TouchableOpacity>
-        )}
-      />
-
-      <FlatList
-        data={filtered}
+        data={appointments}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
+        refreshing={loading}
+        onRefresh={fetchAppointments}
         renderItem={({ item }) => (
-          <AdminAppointmentItem
-            clientName={item.clientName}
-            serviceName={item.serviceName}
-            time={item.time}
-            status={item.status}
-            onConfirm={() => console.log('Confirmar', item.id)}
-            onCancel={() => console.log('Cancelar', item.id)}
-          />
-        )}
-        ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Feather name="calendar" size={48} color={AuraColors.textMuted} />
-            <Text style={styles.emptyText}>No hay citas con este filtro</Text>
+          <View style={styles.card}>
+            <Text style={styles.clientName}>{item.client?.full_name}</Text>
+            <Text style={styles.serviceName}>{item.service?.name}</Text>
+            <Text>{item.appointment_date} {item.start_time}-{item.end_time}</Text>
+            <View style={[styles.statusBadge, { backgroundColor: item.status === 'pending' ? '#FDF3E0' : '#EDF7ED' }]}>
+              <Text style={{ color: item.status === 'pending' ? AuraColors.warning : AuraColors.success }}>
+                {item.status === 'pending' ? 'Pendiente' : 'Confirmada'}
+              </Text>
+            </View>
+            {item.status === 'pending' && (
+              <View style={styles.actions}>
+                <TouchableOpacity style={styles.approveBtn} onPress={() => handleUpdate(item.id, 'confirmed')}>
+                  <Feather name="check" size={16} color="white" />
+                  <Text style={styles.actionText}>Aprobar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.rejectBtn} onPress={() => handleUpdate(item.id, 'cancelled')}>
+                  <Feather name="x" size={16} color="white" />
+                  <Text style={styles.actionText}>Rechazar</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
-        }
+        )}
+        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+        ListEmptyComponent={<Text style={{ textAlign: 'center', color: AuraColors.textMuted }}>No hay solicitudes.</Text>}
       />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: AuraColors.background,
-  },
-  header: {
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 16,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: AuraColors.textPrimary,
-  },
-  filtersList: {
-    paddingHorizontal: 24,
-    gap: 8,
-    marginBottom: 20,
-  },
-  filterChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: AuraColors.card,
-    borderWidth: 1,
-    borderColor: AuraColors.border,
-  },
-  filterChipActive: {
-    backgroundColor: AuraColors.primary,
-    borderColor: AuraColors.primary,
-  },
-  filterText: {
-    fontSize: 13,
-    color: AuraColors.textSecondary,
-  },
-  filterTextActive: {
-    color: 'white',
-    fontWeight: '600',
-  },
-  list: {
-    paddingHorizontal: 24,
-    paddingBottom: 32,
-  },
-  empty: {
-    alignItems: 'center',
-    marginTop: 60,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: AuraColors.textMuted,
-    marginTop: 12,
-  },
+  container: { flex: 1, backgroundColor: AuraColors.background },
+  header: { padding: 24, paddingBottom: 16 },
+  title: { fontSize: 24, fontWeight: '700' },
+  list: { paddingHorizontal: 24 },
+  card: { backgroundColor: AuraColors.card, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: AuraColors.border },
+  clientName: { fontSize: 16, fontWeight: '600' },
+  serviceName: { fontSize: 14, color: AuraColors.textSecondary },
+  statusBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, marginTop: 6 },
+  actions: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  approveBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: AuraColors.success, padding: 8, borderRadius: 8, gap: 4 },
+  rejectBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: AuraColors.destructive, padding: 8, borderRadius: 8, gap: 4 },
+  actionText: { color: 'white', fontWeight: '600' },
 });

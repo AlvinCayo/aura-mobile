@@ -16,6 +16,7 @@ import Button from '../src/components/ui/Button';
 import Input from '../src/components/ui/Input';
 import SocialButton from '../src/components/ui/SocialButton';
 import { useAuth } from '../src/contexts/AuthContext';
+import { createDeepLink } from '../src/lib/deeplink';
 import { supabase } from '../src/lib/supabase';
 import { AuraColors } from '../src/theme/colors';
 
@@ -37,16 +38,22 @@ export default function LoginScreen() {
 
   // Función para Google
   const handleGoogleSignIn = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
-    if (error) Alert.alert('Error con Google', error.message);
-    // Si es exitoso, automáticamente Supabase redirige y te devuelve a la app,
-    // por lo que no necesitas hacer nada más.
+    const redirectUrl = createDeepLink();
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: redirectUrl },
+  });
+  if (error) Alert.alert('Error', error.message);
   };
 
   // Función para Facebook
   const handleFacebookSignIn = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'facebook' });
-    if (error) Alert.alert('Error con Facebook', error.message);
+  const redirectUrl = createDeepLink();
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'facebook',
+    options: { redirectTo: redirectUrl },
+  });
+    if (error) Alert.alert('Error', error.message);
   };
 
   return (
