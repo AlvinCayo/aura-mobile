@@ -1,27 +1,62 @@
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../src/components/ui/Button';
 import { updateAppointmentStatus } from '../../src/lib/data';
+import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
 export default function PaymentScreen() {
   const { appointmentId, amount } = useLocalSearchParams<{ appointmentId: string, amount: string }>();
   const router = useRouter();
+  
   const [loading, setLoading] = useState(false);
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const [fetchingQr, setFetchingQr] = useState(true);
+
+  // Buscar el QR del centro asociado a esta cita
+  useEffect(() => {
+    const fetchCenterQR = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('appointments')
+          .select(`
+            centers (
+              payment_qr_url
+            )
+          `)
+          .eq('id', appointmentId)
+          .single();
+
+        // Evitamos el error diciéndole a TypeScript que trate 'centers' como un objeto cualquiera
+        const centerData = data?.centers as any;
+
+        if (!error && centerData && centerData.payment_qr_url) {
+          setQrUrl(centerData.payment_qr_url);
+        }
+      } catch (error) {
+        console.error("Error obteniendo QR", error);
+      } finally {
+        setFetchingQr(false);
+      }
+    };
+
+    if (appointmentId) fetchCenterQR();
+  }, [appointmentId]);
 
   const handleConfirmPayment = async () => {
     setLoading(true);
-    // Cambiamos el estado a "completed" o creamos un nuevo estado "paid"
     const { error } = await updateAppointmentStatus(appointmentId as string, 'completed');
     setLoading(false);
 
@@ -59,10 +94,16 @@ export default function PaymentScreen() {
           </Text>
           
           <View style={styles.qrContainer}>
-            {/* Aquí en el futuro puedes usar react-native-qrcode-svg para generar QRs dinámicos.
-                Por ahora usamos un icono o imagen de placeholder. */}
-            <Feather name="maximize" size={150} color={AuraColors.primary} />
-            <Text style={styles.qrMockText}>QR Simple</Text>
+            {fetchingQr ? (
+              <ActivityIndicator size="large" color={AuraColors.primary} />
+            ) : qrUrl ? (
+              <Image source={{ uri: qrUrl }} style={styles.qrImage} resizeMode="contain" />
+            ) : (
+              <View style={{ alignItems: 'center' }}>
+                <Feather name="alert-circle" size={48} color={AuraColors.textMuted} />
+                <Text style={styles.noQrText}>El centro aún no ha subido su código QR.</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -77,6 +118,7 @@ export default function PaymentScreen() {
           title="Ya realicé el pago"
           onPress={handleConfirmPayment}
           loading={loading}
+          disabled={!qrUrl} // Si no hay QR, no puede confirmar el pago
           icon={<Feather name="check-circle" size={18} color="white" />}
         />
         <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()}>
@@ -99,8 +141,9 @@ const styles = StyleSheet.create({
   helperText: { fontSize: 13, color: AuraColors.textSecondary, marginTop: 8 },
   qrSection: { backgroundColor: AuraColors.card, padding: 24, borderRadius: 20, alignItems: 'center', borderWidth: 1, borderColor: AuraColors.border },
   instructionText: { fontSize: 15, color: AuraColors.textSecondary, textAlign: 'center', marginBottom: 24, lineHeight: 22 },
-  qrContainer: { width: 200, height: 200, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', borderRadius: 16, borderWidth: 2, borderColor: AuraColors.border },
-  qrMockText: { position: 'absolute', fontWeight: '800', color: AuraColors.textPrimary, fontSize: 20 },
+  qrContainer: { width: 220, height: 220, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', borderRadius: 16, borderWidth: 2, borderColor: AuraColors.border, overflow: 'hidden' },
+  qrImage: { width: '100%', height: '100%' },
+  noQrText: { textAlign: 'center', color: AuraColors.textMuted, fontSize: 13, marginTop: 12, paddingHorizontal: 10 },
   securityBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 24, padding: 16, backgroundColor: '#EDF7ED', borderRadius: 12 },
   securityText: { color: AuraColors.success, fontWeight: '600', fontSize: 14 },
   footer: { padding: 24, backgroundColor: AuraColors.background, borderTopWidth: 1, borderTopColor: AuraColors.border },

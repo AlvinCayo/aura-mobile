@@ -160,9 +160,6 @@ export default function LoginScreen() {
               <Text style={styles.footerLink}>Regístrate</Text>
             </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={() => router.push('/register-center')}>
-              <Text style={styles.centerLink}>¿Eres dueño de un centro? Regístrate aquí</Text>
-          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

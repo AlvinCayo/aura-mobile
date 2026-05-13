@@ -1,78 +1,53 @@
 import { Feather } from '@expo/vector-icons';
 import React from 'react';
-import { StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { AuraColors } from '../../theme/colors';
 
+// Aquí definimos exactamente las propiedades que TypeScript nos estaba pidiendo
 interface KpiCardProps {
-  icon: string;
-  label: string;
-  value: string | number;
-  trend?: string;
-  trendUp?: boolean;
-  style?: ViewStyle;
+  title: string;
+  value: string;
+  icon: keyof typeof Feather.glyphMap; // Esto asegura que solo aceptemos iconos válidos de Feather
+  color?: string;
 }
 
-export default function KpiCard({ icon, label, value, trend, trendUp, style }: KpiCardProps) {
+export default function KpiCard({ title, value, icon, color = AuraColors.primary }: KpiCardProps) {
   return (
-    <View style={[styles.card, style]}>
-      <View style={styles.iconCircle}>
-        <Feather name={icon as any} size={20} color={AuraColors.primary} />
+    <View style={styles.card}>
+      {/* El fondo del icono tendrá el mismo color pero con 15% de opacidad */}
+      <View style={[styles.iconContainer, { backgroundColor: `${color}15` }]}>
+        <Feather name={icon} size={20} color={color} />
       </View>
-      <Text style={styles.value}>{value}</Text>
-      <Text style={styles.label}>{label}</Text>
-      {trend ? (
-        <View style={styles.trendContainer}>
-          <Feather
-            name={trendUp ? 'trending-up' : 'trending-down'}
-            size={14}
-            color={trendUp ? AuraColors.success : AuraColors.destructive}
-          />
-          <Text style={[styles.trendText, { color: trendUp ? AuraColors.success : AuraColors.destructive }]}>
-            {trend}
-          </Text>
-        </View>
-      ) : null}
+      <Text style={styles.value} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+      <Text style={styles.title} numberOfLines={1}>{title}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
+    flex: 1, // Para que las 3 tarjetas ocupen el mismo ancho en la pantalla
     backgroundColor: AuraColors.card,
-    borderRadius: 14,
     padding: 16,
-    alignItems: 'center',
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: AuraColors.border,
-    minWidth: 100,
+    alignItems: 'flex-start',
   },
-  iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: AuraColors.primaryLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
+  iconContainer: {
+    padding: 10,
+    borderRadius: 12,
+    marginBottom: 12,
   },
   value: {
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: '800',
     color: AuraColors.textPrimary,
-    marginBottom: 2,
+    marginBottom: 4,
   },
-  label: {
-    fontSize: 13,
-    color: AuraColors.textSecondary,
-    marginBottom: 6,
-  },
-  trendContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  trendText: {
+  title: {
     fontSize: 12,
-    fontWeight: '600',
+    color: AuraColors.textSecondary,
+    fontWeight: '500',
   },
 });

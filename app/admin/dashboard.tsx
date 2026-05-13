@@ -1,201 +1,170 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AdminAppointmentItem from '../../src/components/ui/AdminAppointmentItem';
 import KpiCard from '../../src/components/ui/KpiCard';
+import { useAuth } from '../../src/contexts/AuthContext';
+import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
-const { width } = Dimensions.get('window');
-const CARD_GAP = 12;
-const CARD_WIDTH = (width - 48 - CARD_GAP) / 2;
-
-const TODAY_APPOINTMENTS = [
-  {
-    id: '1',
-    clientName: 'María García',
-    serviceName: 'Limpieza facial',
-    time: '10:00',
-    status: 'pending' as const,
-  },
-  {
-    id: '2',
-    clientName: 'Carlos López',
-    serviceName: 'Masaje relajante',
-    time: '11:30',
-    status: 'confirmed' as const,
-  },
-];
-
-const RECENT_CLIENTS = [
-  { id: '1', name: 'María García', lastVisit: 'Limpieza facial' },
-  { id: '2', name: 'Carlos López', lastVisit: 'Masaje relajante' },
-  { id: '3', name: 'Ana Martínez', lastVisit: 'Peeling químico' },
-];
-
-export default function DashboardScreen() {
+export default function AdminDashboardScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [center, setCenter] = useState<any>(null);
+  const [stats, setStats] = useState({ pending: 0, today: 0, services: 0 });
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [user]);
+
+  const loadDashboardData = async () => {
+    if (!user) return;
+    
+    try {
+      // 1. Obtener el centro del usuario
+      const { data: centerData, error: centerError } = await supabase
+        .from('centers')
+        .select('*')
+        .eq('owner_id', user.id)
+        .single();
+
+      if (centerError || !centerData) {
+        // Si por alguna razón no tiene centro, lo devolvemos
+        Alert.alert('Error', 'No se encontró un centro asociado a tu cuenta.');
+        router.replace('/(tabs)/profile');
+        return;
+      }
+      setCenter(centerData);
+
+      // 2. Obtener estadísticas (Citas pendientes)
+      const { count: pendingCount } = await supabase
+        .from('appointments')
+        .select('*', { count: 'exact', head: true })
+        .eq('center_id', centerData.id)
+        .eq('status', 'pending');
+
+      // 3. Obtener citas de hoy (aprobadas o completadas)
+      const today = new Date().toISOString().slice(0, 10);
+      const { count: todayCount } = await supabase
+        .from('appointments')
+        .select('*', { count: 'exact', head: true })
+        .eq('center_id', centerData.id)
+        .eq('appointment_date', today)
+        .in('status', ['confirmed', 'completed']);
+
+      // 4. Obtener cantidad de servicios activos
+      const { count: servicesCount } = await supabase
+        .from('services')
+        .select('*', { count: 'exact', head: true })
+        .eq('center_id', centerData.id);
+
+      setStats({
+        pending: pendingCount || 0,
+        today: todayCount || 0,
+        services: servicesCount || 0,
+      });
+
+    } catch (error) {
+      console.error("Error cargando dashboard:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={AuraColors.primary} />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>Dashboard</Text>
-        <Text style={styles.subtitle}>Resumen de hoy</Text>
-
-        {/* KPIs */}
-        <View style={styles.kpiRow}>
-          <KpiCard
-            icon="calendar"
-            label="Citas Hoy"
-            value={8}
-            trend="+12%"
-            trendUp
-            style={{ width: CARD_WIDTH }}
-          />
-          <KpiCard
-            icon="dollar-sign"
-            label="Ingresos"
-            value="€320"
-            trend="+5%"
-            trendUp
-            style={{ width: CARD_WIDTH }}
-          />
-        </View>
-        <View style={styles.kpiRow}>
-          <KpiCard
-            icon="user-plus"
-            label="Nuevos"
-            value={3}
-            style={{ width: CARD_WIDTH }}
-          />
-          <KpiCard
-            icon="star"
-            label="Reseñas"
-            value={12}
-            style={{ width: CARD_WIDTH }}
-          />
-        </View>
-
-        {/* Próximas citas */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Próximas citas</Text>
-          <TouchableOpacity onPress={() => router.push('/admin/appointments' as any)}>
-            <Text style={styles.seeAll}>Ver todas</Text>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.replace('/(tabs)/profile')} style={styles.backButton}>
+            <Feather name="arrow-left" size={20} color={AuraColors.textPrimary} />
           </TouchableOpacity>
+          <Text style={styles.headerTitle}>Panel de Control</Text>
+          <View style={{ width: 40 }} />
         </View>
-        {TODAY_APPOINTMENTS.map((appt) => (
-          <AdminAppointmentItem
-            key={appt.id}
-            clientName={appt.clientName}
-            serviceName={appt.serviceName}
-            time={appt.time}
-            status={appt.status}
-            onConfirm={() => console.log('Confirmar', appt.id)}
-            onCancel={() => console.log('Cancelar', appt.id)}
-            style={{ marginBottom: 10 }}
-          />
-        ))}
 
-        {/* Clientes recientes */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Clientes recientes</Text>
-          <TouchableOpacity onPress={() => router.push('/admin/clients' as any)}>
-            <Text style={styles.seeAll}>Ver todos</Text>
-          </TouchableOpacity>
-        </View>
-        {RECENT_CLIENTS.map((client) => (
-          <TouchableOpacity
-            key={client.id}
-            style={styles.clientItem}
-            onPress={() => router.push(`/admin/clients/${client.id}` as any)}
-          >
-            <View style={styles.clientAvatar}>
-              <Feather name="user" size={18} color={AuraColors.textMuted} />
+        <View style={styles.welcomeSection}>
+          <Text style={styles.welcomeText}>Hola,</Text>
+          <Text style={styles.centerName}>{center?.name}</Text>
+          
+          {/* Alerta visible si AURA aún no aprueba el centro */}
+          {center?.status === 'pending' && (
+            <View style={styles.pendingBadge}>
+              <Feather name="clock" size={14} color="#F59E0B" />
+              <Text style={styles.pendingBadgeText}>Cuenta en revisión por AURA</Text>
             </View>
-            <View style={styles.clientInfo}>
-              <Text style={styles.clientName}>{client.name}</Text>
-              <Text style={styles.clientLastVisit}>Última visita: {client.lastVisit}</Text>
+          )}
+        </View>
+
+        <Text style={styles.sectionTitle}>Resumen General</Text>
+        <View style={styles.kpiGrid}>
+          <KpiCard title="Citas Hoy" value={stats.today.toString()} icon="calendar" color={AuraColors.primary} />
+          <KpiCard title="Pendientes" value={stats.pending.toString()} icon="clock" color="#F59E0B" />
+          <KpiCard title="Servicios" value={stats.services.toString()} icon="grid" color={AuraColors.success} />
+        </View>
+
+        <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
+        <View style={styles.actionsGrid}>
+          
+          <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/admin/appointments')}>
+            <View style={[styles.actionIconContainer, { backgroundColor: AuraColors.primaryLight }]}>
+              <Feather name="inbox" size={24} color={AuraColors.primary} />
+              {stats.pending > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{stats.pending}</Text>
+                </View>
+              )}
             </View>
-            <Feather name="chevron-right" size={18} color={AuraColors.textMuted} />
+            <Text style={styles.actionText}>Solicitudes</Text>
           </TouchableOpacity>
-        ))}
+
+          <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/admin/services')}>
+            <View style={[styles.actionIconContainer, { backgroundColor: '#EDF7ED' }]}>
+              <Feather name="list" size={24} color={AuraColors.success} />
+            </View>
+            <Text style={styles.actionText}>Mis Servicios</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/admin/qr-generator')}>
+            <View style={[styles.actionIconContainer, { backgroundColor: '#F3E8FF' }]}>
+              <Feather name="maximize" size={24} color="#9333EA" />
+            </View>
+            <Text style={styles.actionText}>Mi QR Simple</Text>
+          </TouchableOpacity>
+
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: AuraColors.background,
-  },
-  scrollContent: {
-    padding: 24,
-    paddingBottom: 40,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: AuraColors.textPrimary,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: AuraColors.textSecondary,
-    marginBottom: 24,
-  },
-  kpiRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: CARD_GAP,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-    marginTop: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: AuraColors.textPrimary,
-  },
-  seeAll: {
-    fontSize: 14,
-    color: AuraColors.primary,
-    fontWeight: '500',
-  },
-  clientItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: AuraColors.card,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: AuraColors.border,
-  },
-  clientAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: AuraColors.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  clientInfo: {
-    flex: 1,
-  },
-  clientName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: AuraColors.textPrimary,
-  },
-  clientLastVisit: {
-    fontSize: 13,
-    color: AuraColors.textSecondary,
-  },
+  container: { flex: 1, backgroundColor: AuraColors.background },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  scrollContent: { padding: 24, paddingBottom: 40 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: AuraColors.card, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: AuraColors.border },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: AuraColors.textPrimary },
+  welcomeSection: { marginBottom: 32 },
+  welcomeText: { fontSize: 16, color: AuraColors.textSecondary },
+  centerName: { fontSize: 28, fontWeight: '800', color: AuraColors.primary, marginTop: 4 },
+  pendingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FDF3E0', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, alignSelf: 'flex-start', marginTop: 12, gap: 6 },
+  pendingBadgeText: { color: '#F59E0B', fontWeight: '600', fontSize: 13 },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 16 },
+  kpiGrid: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginBottom: 32 },
+  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  actionCard: { width: '30%', alignItems: 'center', gap: 8 },
+  actionIconContainer: { width: 64, height: 64, borderRadius: 20, justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  actionText: { fontSize: 13, fontWeight: '500', color: AuraColors.textSecondary, textAlign: 'center' },
+  badge: { position: 'absolute', top: -4, right: -4, backgroundColor: AuraColors.destructive, width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'white' },
+  badgeText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
 });
