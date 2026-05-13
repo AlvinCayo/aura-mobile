@@ -29,7 +29,6 @@ export default function LoginScreen() {
   const router = useRouter();
   const { signIn } = useAuth();
 
-  // Función para login con email/contraseña
   const handleLogin = async () => {
     const { error } = await signIn(email, password);
     if (error) {
@@ -39,18 +38,42 @@ export default function LoginScreen() {
     }
   };
 
-  // Función para Google
+// Función MÁGICA actualizada para soportar el estándar de seguridad PKCE
+  const createSessionFromUrl = async (url: string) => {
+    const params: any = {};
+    // Detectamos si la URL usa ?code= (PKCE) o #access_token= (Implicit)
+    const queryString = url.includes('#') ? url.split('#')[1] : url.split('?')[1];
+    
+    if (queryString) {
+      queryString.split('&').forEach(pair => {
+        const [key, value] = pair.split('=');
+        params[key] = value;
+      });
+    }
+
+    // Intercambio PKCE (El nuevo estándar que usa Google/Supabase)
+    if (params.code) {
+      const { error } = await supabase.auth.exchangeCodeForSession(params.code);
+      if (error) throw error;
+    } 
+    // Intercambio de Token Directo (Método clásico)
+    else if (params.access_token && params.refresh_token) {
+      const { error } = await supabase.auth.setSession({
+        access_token: params.access_token,
+        refresh_token: params.refresh_token,
+      });
+      if (error) throw error;
+    }
+  };
+
   const handleGoogleSignIn = async () => {
     const redirectUrl = createDeepLink();
     
-    // 1. Obtenemos la URL de autenticación de Supabase
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { 
         redirectTo: redirectUrl,
-        queryParams: {
-          prompt: 'select_account', // <-- ESTO FUERZA LA PANTALLA DE SELECCIÓN DE CUENTA
-        }
+        queryParams: { prompt: 'select_account' } 
       },
     });
 
@@ -59,18 +82,21 @@ export default function LoginScreen() {
       return;
     }
 
-    // 2. Abrimos el navegador nativo del celular con esa URL
     if (data?.url) {
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
       
-      // Si el login es exitoso, redirigimos al usuario
-      if (result.type === 'success') {
-        router.replace('/(tabs)');
+      // Capturamos el result.url y creamos la sesión
+      if (result.type === 'success' && result.url) {
+        try {
+          await createSessionFromUrl(result.url);
+          router.replace('/(tabs)');
+        } catch (e: any) {
+          Alert.alert('Error de Sesión', 'No se pudo iniciar sesión con Google.');
+        }
       }
     }
   };
-
-  // Función para Facebook
+createSessionFromUrl
   const handleFacebookSignIn = async () => {
     const redirectUrl = createDeepLink();
     
@@ -86,8 +112,14 @@ export default function LoginScreen() {
 
     if (data?.url) {
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-      if (result.type === 'success') {
-        router.replace('/(tabs)');
+      
+      if (result.type === 'success' && result.url) {
+        try {
+          await createSessionFromUrl(result.url);
+          router.replace('/(tabs)');
+        } catch (e: any) {
+          Alert.alert('Error de Sesión', 'No se pudo iniciar sesión con Facebook.');
+        }
       }
     }
   };
