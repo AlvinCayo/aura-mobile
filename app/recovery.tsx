@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -13,11 +14,22 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../src/components/ui/Button';
 import Input from '../src/components/ui/Input';
+import { supabase } from '../src/lib/supabase';
 import { AuraColors } from '../src/theme/colors';
 
 export default function PasswordRecoveryScreen() {
   const [email, setEmail] = useState('');
   const router = useRouter();
+
+  const handleRecover = async () => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    if (error) {
+      Alert.alert('Error', error.message);
+    } else {
+      Alert.alert('Correo enviado', 'Revisa tu bandeja de entrada para restablecer la contraseña.');
+      router.back();
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -26,6 +38,7 @@ export default function PasswordRecoveryScreen() {
         style={styles.keyboardView}
       >
         <ScrollView contentContainerStyle={styles.scrollContent}>
+
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Feather name="arrow-left" size={20} color={AuraColors.textPrimary} />
           </TouchableOpacity>
@@ -50,7 +63,7 @@ export default function PasswordRecoveryScreen() {
 
           <Button
             title="Enviar Instrucciones"
-            onPress={() => console.log('Recuperar:', email)}
+            onPress={handleRecover}
             icon={<Feather name="arrow-right" size={18} color="white" />}
             style={styles.submitButton}
           />
@@ -70,44 +83,17 @@ const styles = StyleSheet.create({
   scrollContent: { padding: 24, paddingBottom: 40, alignItems: 'center' },
   backButton: {
     alignSelf: 'flex-start',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: AuraColors.card,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: AuraColors.border,
-    marginBottom: 24,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: AuraColors.card, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: AuraColors.border, marginBottom: 24,
   },
   iconCircle: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: 88, height: 88, borderRadius: 44,
     backgroundColor: AuraColors.primaryLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
+    justifyContent: 'center', alignItems: 'center', marginBottom: 24,
   },
-  title: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: AuraColors.textPrimary,
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  description: {
-    fontSize: 15,
-    color: AuraColors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 32,
-    lineHeight: 22,
-    paddingHorizontal: 10,
-  },
+  title: { fontSize: 26, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 12, textAlign: 'center' },
+  description: { fontSize: 15, color: AuraColors.textSecondary, textAlign: 'center', marginBottom: 32, lineHeight: 22, paddingHorizontal: 10 },
   submitButton: { width: '100%', marginBottom: 24 },
-  backToLogin: {
-    fontSize: 14,
-    color: AuraColors.primary,
-    fontWeight: '500',
-  },
+  backToLogin: { fontSize: 14, color: AuraColors.primary, fontWeight: '500' },
 });

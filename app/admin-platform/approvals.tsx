@@ -1,80 +1,119 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
-const PENDING_CENTERS = [
-  { id: '1', name: 'Centro Wellness Plus', address: 'Calle Norte #456', submitted: 'Hace 2 horas', documents: 3, complete: true },
-  { id: '2', name: 'Spa Natural Beauty', address: 'Av. Sur #789', submitted: 'Hace 1 día', documents: 2, complete: false },
-  { id: '3', name: 'Estética Premium', address: 'Centro Comercial #12', submitted: 'Hace 2 días', documents: 3, complete: true },
-];
-
-const REVIEWED_CENTERS = [
-  { id: '4', name: 'Spa Relax', status: 'approved', date: 'Ayer' },
-  { id: '5', name: 'Beauty Center', status: 'rejected', date: 'Hace 3 días' },
-];
+interface Center {
+  id: string;
+  name: string;
+  address: string;
+  owner: { full_name: string; email: string };
+  license_url: string;
+  created_at: string;
+}
 
 export default function AdminApprovalPanelScreen() {
+  const [centers, setCenters] = useState<Center[]>([]);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
+
+  const fetchPending = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('centers')
+      .select('id, name, address, license_url, created_at, owner:profiles!owner_id ( full_name, email )')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      Alert.alert('Error', error.message);
+    } else {
+      // Supabase devuelve owner como array de un elemento, lo convertimos a objeto
+      const formatted = (data || []).map((item: any) => ({
+        ...item,
+        owner: Array.isArray(item.owner) ? item.owner[0] : item.owner,
+      }));
+      setCenters(formatted);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchPending();
+  }, []);
+
+  const handleApprove = (id: string) => {
+    Alert.alert('Aprobar centro', '¿Confirmar aprobación?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Aprobar',
+        onPress: async () => {
+          const { error } = await supabase.from('centers').update({ status: 'approved' }).eq('id', id);
+          if (error) Alert.alert('Error', error.message);
+          else fetchPending();
+        },
+      },
+    ]);
+  };
+
+  const handleReject = (id: string) => {
+    Alert.alert('Rechazar centro', '¿Confirmar rechazo?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Rechazar',
+        onPress: async () => {
+          const { error } = await supabase.from('centers').update({ status: 'rejected' }).eq('id', id);
+          if (error) Alert.alert('Error', error.message);
+          else fetchPending();
+        },
+      },
+    ]);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
-      <FlatList
-        contentContainerStyle={styles.scroll}
-        ListHeaderComponent={
-          <>
-            <Text style={styles.title}>Aprobaciones</Text>
-            <Text style={styles.subtitle}>5 centros pendientes</Text>
-          </>
-        }
-        data={[]}
-        renderItem={() => null}
-        ListFooterComponent={
-          <>
-            {/* Pendientes */}
-            <Text style={styles.sectionTitle}>Nuevos ({PENDING_CENTERS.length})</Text>
-            {PENDING_CENTERS.map((center) => (
-              <TouchableOpacity
-                key={center.id}
-                style={styles.card}
-                onPress={() => router.push(`/admin-platform/approvals/${center.id}` as any)}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>{center.name}</Text>
-                  <Text style={styles.cardAddress}>{center.address}</Text>
-                  <Text style={styles.cardMeta}>{center.submitted} · {center.documents} documentos</Text>
-                </View>
-                <View style={[styles.completenessBadge, { backgroundColor: center.complete ? '#EDF7ED' : '#FDF3E0' }]}>
-                  <Text style={{ color: center.complete ? AuraColors.success : AuraColors.warning, fontSize: 12 }}>
-                    {center.complete ? 'Completo' : 'Incompleto'}
-                  </Text>
-                </View>
-                <Feather name="chevron-right" size={18} color={AuraColors.textMuted} style={{ marginLeft: 8 }} />
-              </TouchableOpacity>
-            ))}
+      <View style={styles.header}>
+        <Text style={styles.title}>Aprobaciones</Text>
+        <Text style={styles.subtitle}>{centers.length} centros pendientes</Text>
+      </View>
 
-            {/* Revisados */}
-            <Text style={styles.sectionTitle}>Revisados Recientemente</Text>
-            {REVIEWED_CENTERS.map((center) => (
-              <View key={center.id} style={styles.card}>
-                <Feather
-                  name={center.status === 'approved' ? 'check-circle' : 'x-circle'}
-                  size={20}
-                  color={center.status === 'approved' ? AuraColors.success : AuraColors.destructive}
-                  style={{ marginRight: 12 }}
-                />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>{center.name}</Text>
-                  <Text style={styles.cardAddress}>{center.date}</Text>
-                </View>
-                <Text style={{ color: center.status === 'approved' ? AuraColors.success : AuraColors.destructive, fontWeight: '600' }}>
-                  {center.status === 'approved' ? 'Aprobado' : 'Rechazado'}
-                </Text>
-              </View>
-            ))}
-          </>
+      <FlatList
+        data={centers}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.list}
+        refreshing={loading}
+        onRefresh={fetchPending}
+        renderItem={({ item }) => (
+          <View style={styles.card}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.centerName}>{item.name}</Text>
+              <Text style={styles.address}>{item.address}</Text>
+              {item.owner && (
+                <Text style={styles.owner}>Dueño: {item.owner.full_name} ({item.owner.email})</Text>
+              )}
+              <Text style={styles.date}>Solicitud: {new Date(item.created_at).toLocaleDateString()}</Text>
+            </View>
+            <View style={styles.actions}>
+              <TouchableOpacity style={styles.approveButton} onPress={() => handleApprove(item.id)}>
+                <Feather name="check" size={16} color="white" />
+                <Text style={styles.actionText}>Aprobar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.rejectButton} onPress={() => handleReject(item.id)}>
+                <Feather name="x" size={16} color="white" />
+                <Text style={styles.actionText}>Rechazar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Feather name="inbox" size={48} color={AuraColors.textMuted} />
+            <Text style={styles.emptyText}>No hay solicitudes pendientes</Text>
+          </View>
         }
       />
     </SafeAreaView>
@@ -83,22 +122,31 @@ export default function AdminApprovalPanelScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: AuraColors.background },
-  scroll: { padding: 24, paddingBottom: 40 },
+  header: { padding: 24, paddingBottom: 16 },
   title: { fontSize: 24, fontWeight: '700', color: AuraColors.textPrimary },
-  subtitle: { fontSize: 14, color: AuraColors.textSecondary, marginBottom: 24 },
-  sectionTitle: { fontSize: 18, fontWeight: '600', color: AuraColors.textPrimary, marginTop: 20, marginBottom: 12 },
+  subtitle: { fontSize: 14, color: AuraColors.textSecondary, marginTop: 4 },
+  list: { paddingHorizontal: 24, paddingBottom: 32 },
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
     backgroundColor: AuraColors.card,
     borderRadius: 12,
+    padding: 14,
     borderWidth: 1,
     borderColor: AuraColors.border,
-    marginBottom: 8,
   },
-  cardTitle: { fontSize: 15, fontWeight: '600', color: AuraColors.textPrimary },
-  cardAddress: { fontSize: 13, color: AuraColors.textSecondary },
-  cardMeta: { fontSize: 12, color: AuraColors.textMuted, marginTop: 2 },
-  completenessBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  centerName: { fontSize: 16, fontWeight: '600', color: AuraColors.textPrimary },
+  address: { fontSize: 14, color: AuraColors.textSecondary },
+  owner: { fontSize: 13, color: AuraColors.textMuted, marginTop: 4 },
+  date: { fontSize: 12, color: AuraColors.textMuted, marginTop: 4 },
+  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 },
+  approveButton: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: AuraColors.success, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8,
+  },
+  rejectButton: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: AuraColors.destructive, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8,
+  },
+  actionText: { color: 'white', fontSize: 13, fontWeight: '600' },
+  empty: { alignItems: 'center', marginTop: 60 },
+  emptyText: { fontSize: 16, color: AuraColors.textMuted, marginTop: 12 },
 });

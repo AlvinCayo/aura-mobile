@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -14,15 +15,38 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../src/components/ui/Button';
 import Input from '../src/components/ui/Input';
 import SocialButton from '../src/components/ui/SocialButton';
+import { useAuth } from '../src/contexts/AuthContext';
+import { supabase } from '../src/lib/supabase';
 import { AuraColors } from '../src/theme/colors';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const router = useRouter();
+  const { signIn } = useAuth();
 
-  const handleLogin = () => {
-    console.log('Login con:', email, password);
+  // Función para login con email/contraseña
+  const handleLogin = async () => {
+    const { error } = await signIn(email, password);
+    if (error) {
+      Alert.alert('Error al iniciar sesión', error.message);
+    } else {
+      router.replace('/(tabs)');
+    }
+  };
+
+  // Función para Google
+  const handleGoogleSignIn = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
+    if (error) Alert.alert('Error con Google', error.message);
+    // Si es exitoso, automáticamente Supabase redirige y te devuelve a la app,
+    // por lo que no necesitas hacer nada más.
+  };
+
+  // Función para Facebook
+  const handleFacebookSignIn = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({ provider: 'facebook' });
+    if (error) Alert.alert('Error con Facebook', error.message);
   };
 
   return (
@@ -37,7 +61,6 @@ export default function LoginScreen() {
         >
           <View style={styles.logoSection}>
             <View style={styles.logoCircle}>
-              {/* Fix: cast name to any */}
               <Feather name={'sparkles' as any} size={28} color={AuraColors.primary} />
             </View>
             <Text style={styles.appName}>AURA</Text>
@@ -47,9 +70,10 @@ export default function LoginScreen() {
           <Text style={styles.title}>Bienvenido de vuelta</Text>
           <Text style={styles.subtitle}>Inicia sesión para continuar</Text>
 
+          {/* Botones de Google y Facebook, ahora con funciones reales */}
           <View style={styles.socialRow}>
-            <SocialButton provider="google" onPress={() => {}} />
-            <SocialButton provider="facebook" onPress={() => {}} />
+            <SocialButton provider="google" onPress={handleGoogleSignIn} />
+            <SocialButton provider="facebook" onPress={handleFacebookSignIn} />
           </View>
 
           <View style={styles.separator}>
@@ -94,12 +118,16 @@ export default function LoginScreen() {
               <Text style={styles.footerLink}>Regístrate</Text>
             </TouchableOpacity>
           </View>
+          <TouchableOpacity onPress={() => router.push('/register-center')}>
+              <Text style={styles.centerLink}>¿Eres dueño de un centro? Regístrate aquí</Text>
+          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
+// ... los estilos no cambian
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -197,4 +225,11 @@ const styles = StyleSheet.create({
     color: AuraColors.primary,
     fontWeight: '600',
   },
+  centerLink: {
+  marginTop: 16,
+  textAlign: 'center',
+  fontSize: 14,
+  color: AuraColors.primary,
+  fontWeight: '500',
+},
 });

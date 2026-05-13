@@ -2,18 +2,26 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SettingsItem from '../../src/components/ui/SettingsItem';
+import { useAuth } from '../../src/contexts/AuthContext';
 import { AuraColors } from '../../src/theme/colors';
 
 export default function ProfileScreen() {
   const router = useRouter();
+
+  const { signOut } = useAuth();
+
+  const handleLogout = async () => {
+    await signOut();
+    router.replace('/login');
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -83,8 +91,8 @@ export default function ProfileScreen() {
 
         {/* Cerrar sesión */}
         <TouchableOpacity
-          style={styles.logoutButton}
-          onPress={() => router.replace('/login' as any)}
+        style={styles.logoutButton}
+        onPress={handleLogout}
         >
           <Feather name="log-out" size={18} color={AuraColors.destructive} />
           <Text style={styles.logoutText}>Cerrar sesión</Text>
