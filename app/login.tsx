@@ -34,11 +34,13 @@ export default function LoginScreen() {
     if (error) {
       Alert.alert('Error al iniciar sesión', error.message);
     } else {
+      // Para el inicio de sesión por email sí podemos mantener el replace si tu _layout lo permite,
+      // pero si el guardia _layout.tsx ya lo maneja, podrías omitirlo. Lo mantenemos por seguridad.
       router.replace('/(tabs)');
     }
   };
 
-// Función MÁGICA actualizada para soportar el estándar de seguridad PKCE
+  // Función MÁGICA actualizada para soportar el estándar de seguridad PKCE
   const createSessionFromUrl = async (url: string) => {
     const params: any = {};
     // Detectamos si la URL usa ?code= (PKCE) o #access_token= (Implicit)
@@ -89,14 +91,14 @@ export default function LoginScreen() {
       if (result.type === 'success' && result.url) {
         try {
           await createSessionFromUrl(result.url);
-          router.replace('/(tabs)');
+          // ¡Eliminado el router.replace para evitar el bucle! El _layout.tsx detectará el login automáticamente.
         } catch (e: any) {
           Alert.alert('Error de Sesión', 'No se pudo iniciar sesión con Google.');
         }
       }
     }
   };
-createSessionFromUrl
+
   const handleFacebookSignIn = async () => {
     const redirectUrl = createDeepLink();
     
@@ -116,7 +118,7 @@ createSessionFromUrl
       if (result.type === 'success' && result.url) {
         try {
           await createSessionFromUrl(result.url);
-          router.replace('/(tabs)');
+          // ¡Eliminado el router.replace para evitar el bucle!
         } catch (e: any) {
           Alert.alert('Error de Sesión', 'No se pudo iniciar sesión con Facebook.');
         }
@@ -296,10 +298,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   centerLink: {
-  marginTop: 16,
-  textAlign: 'center',
-  fontSize: 14,
-  color: AuraColors.primary,
-  fontWeight: '500',
-},
+    marginTop: 16,
+    textAlign: 'center',
+    fontSize: 14,
+    color: AuraColors.primary,
+    fontWeight: '500',
+  },
 });
