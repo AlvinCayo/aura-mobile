@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import React, { useState } from 'react';
 import {
   Alert,
@@ -20,6 +21,8 @@ import { createDeepLink } from '../src/lib/deeplink';
 import { supabase } from '../src/lib/supabase';
 import { AuraColors } from '../src/theme/colors';
 
+WebBrowser.maybeCompleteAuthSession();
+
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -39,21 +42,49 @@ export default function LoginScreen() {
   // Función para Google
   const handleGoogleSignIn = async () => {
     const redirectUrl = createDeepLink();
-    const { error } = await supabase.auth.signInWithOAuth({
+    
+    // 1. Obtenemos la URL de autenticación de Supabase
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: redirectUrl },
-  });
-  if (error) Alert.alert('Error', error.message);
+    });
+
+    if (error) {
+      Alert.alert('Error', error.message);
+      return;
+    }
+
+    // 2. Abrimos el navegador nativo del celular con esa URL
+    if (data?.url) {
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+      
+      // Si el login es exitoso, redigimos al usuario
+      if (result.type === 'success') {
+        router.replace('/(tabs)');
+      }
+    }
   };
 
   // Función para Facebook
   const handleFacebookSignIn = async () => {
-  const redirectUrl = createDeepLink();
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'facebook',
-    options: { redirectTo: redirectUrl },
-  });
-    if (error) Alert.alert('Error', error.message);
+    const redirectUrl = createDeepLink();
+    
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'facebook',
+      options: { redirectTo: redirectUrl },
+    });
+
+    if (error) {
+      Alert.alert('Error', error.message);
+      return;
+    }
+
+    if (data?.url) {
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+      if (result.type === 'success') {
+        router.replace('/(tabs)');
+      }
+    }
   };
 
   return (
@@ -77,7 +108,6 @@ export default function LoginScreen() {
           <Text style={styles.title}>Bienvenido de vuelta</Text>
           <Text style={styles.subtitle}>Inicia sesión para continuar</Text>
 
-          {/* Botones de Google y Facebook, ahora con funciones reales */}
           <View style={styles.socialRow}>
             <SocialButton provider="google" onPress={handleGoogleSignIn} />
             <SocialButton provider="facebook" onPress={handleFacebookSignIn} />
@@ -134,7 +164,6 @@ export default function LoginScreen() {
   );
 }
 
-// ... los estilos no cambian
 const styles = StyleSheet.create({
   container: {
     flex: 1,

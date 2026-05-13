@@ -18,7 +18,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../src/components/ui/Button';
 import Input from '../src/components/ui/Input';
 import ProgressSteps from '../src/components/ui/ProgressSteps';
-import { useAuth } from '../src/contexts/AuthContext';
 import { supabase } from '../src/lib/supabase';
 import { AuraColors } from '../src/theme/colors';
 
@@ -33,7 +32,7 @@ interface ServiceInput {
   name: string;
   duration: string;
   price: string;
-  image: ImagePicker.ImagePickerAsset | null; // <-- Nuevo campo
+  image: ImagePicker.ImagePickerAsset | null;
 }
 
 export default function RegisterCenterScreen() {
@@ -48,9 +47,7 @@ export default function RegisterCenterScreen() {
   const [services, setServices] = useState<ServiceInput[]>([{ name: '', duration: '', price: '', image: null }]);
 
   const router = useRouter();
-  const { signUp } = useAuth();
 
-  // --- Manejo de servicios ---
   const addServiceRow = () => {
     setServices([...services, { name: '', duration: '', price: '', image: null }]);
   };
@@ -66,7 +63,6 @@ export default function RegisterCenterScreen() {
     setServices(updated);
   };
 
-  // --- Seleccionar imagen para un servicio ---
   const pickServiceImage = async (index: number) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -86,7 +82,6 @@ export default function RegisterCenterScreen() {
     }
   };
 
-  // --- Subida de licencia ---
   const pickLicense = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -101,30 +96,29 @@ export default function RegisterCenterScreen() {
     }
   };
 
-  // --- Registro completo ---
   const handleContinue = async () => {
     if (step < 4) {
       setStep(step + 1);
       return;
     }
 
-    // 1. Crear usuario y centro en estado "pending"
+    // 1. Crear usuario
     const { data: signUpData, error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { full_name: ownerFullName, role: 'center_owner' } },
     });
+    
     if (error) {
       Alert.alert('Error al registrar', error.message);
       return;
     }
 
-const user = signUpData.user;
-if (!user) {
-  Alert.alert('Error', 'No se pudo crear el usuario.');
-  return;
-}
-// A partir de aquí usa `user.id` directamente
+    const user = signUpData.user;
+    if (!user) {
+      Alert.alert('Error', 'No se pudo crear el usuario.');
+      return;
+    }
 
     // 2. Subir licencia si existe
     let licenseUrl = '';
@@ -144,36 +138,24 @@ if (!user) {
       licenseUrl = supabase.storage.from('licenses').getPublicUrl(fileName).data.publicUrl;
     }
 
-    // 3. Crear centro pendiente
-    const { error: centerError } = await supabase.from('centers').insert({
+    // 3. Crear centro pendiente y OBTENER ID de inmediato
+    const { data: centerData, error: centerError } = await supabase.from('centers').insert({
       owner_id: user.id,
       name: centerName,
       address,
       description,
       license_url: licenseUrl,
       status: 'pending',
-    });
+    }).select('id').single(); // <-- Solución clave
 
-    if (centerError) {
-      Alert.alert('Error al crear centro', centerError.message);
-      return;
-    }
-
-    // Obtener el ID del centro recién creado
-    const { data: centerData, error: centerFetchError } = await supabase
-      .from('centers')
-      .select('id')
-      .eq('owner_id', user.id)
-      .single();
-
-    if (centerFetchError || !centerData) {
-      Alert.alert('Error', 'No se pudo obtener el centro recién creado.');
+    if (centerError || !centerData) {
+      Alert.alert('Error al crear centro', centerError?.message || 'Error desconocido.');
       return;
     }
 
     const centerId = centerData.id;
 
-    // 4. Procesar servicios (subir imágenes y luego insertar)
+    // 4. Procesar servicios
     const validServices = services.filter(s => s.name.trim() !== '' && s.duration.trim() !== '' && s.price.trim() !== '');
 
     if (validServices.length > 0) {
@@ -182,7 +164,6 @@ if (!user) {
       for (const service of validServices) {
         let imageUrl = '';
 
-        // Subir imagen si existe
         if (service.image) {
           const response = await fetch(service.image.uri);
           const blob = await response.blob();
@@ -195,9 +176,6 @@ if (!user) {
 
           if (!uploadError) {
             imageUrl = supabase.storage.from('service-images').getPublicUrl(fileName).data.publicUrl;
-          } else {
-            console.error('Error subiendo imagen de servicio:', uploadError.message);
-            // Continuamos aunque falle la imagen
           }
         }
 
@@ -274,7 +252,6 @@ if (!user) {
                   keyboardType="decimal-pad"
                 />
 
-                {/* Sección de imagen del servicio */}
                 <TouchableOpacity style={styles.imagePickerButton} onPress={() => pickServiceImage(index)}>
                   <Feather name="image" size={18} color={AuraColors.primary} />
                   <Text style={styles.imagePickerText}>
