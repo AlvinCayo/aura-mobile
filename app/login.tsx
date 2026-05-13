@@ -46,7 +46,12 @@ export default function LoginScreen() {
     // 1. Obtenemos la URL de autenticación de Supabase
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: redirectUrl },
+      options: { 
+        redirectTo: redirectUrl,
+        queryParams: {
+          prompt: 'select_account', // <-- ESTO FUERZA LA PANTALLA DE SELECCIÓN DE CUENTA
+        }
+      },
     });
 
     if (error) {
@@ -58,7 +63,7 @@ export default function LoginScreen() {
     if (data?.url) {
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
       
-      // Si el login es exitoso, redigimos al usuario
+      // Si el login es exitoso, redirigimos al usuario
       if (result.type === 'success') {
         router.replace('/(tabs)');
       }

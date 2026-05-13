@@ -10,8 +10,9 @@ interface AppointmentCardProps {
   serviceName: string;
   date: string;
   time: string;
+  price?: string; // <-- Ahora acepta precio (opcional)
   status: AppointmentStatus;
-  onPress: () => void;
+  onPress?: () => void; // <-- Ahora es opcional
 }
 
 const STATUS_CONFIG: Record<
@@ -29,13 +30,19 @@ export default function AppointmentCard({
   serviceName,
   date,
   time,
+  price,
   status,
   onPress,
 }: AppointmentCardProps) {
   const config = STATUS_CONFIG[status];
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity 
+      style={styles.card} 
+      onPress={onPress} 
+      activeOpacity={onPress ? 0.7 : 1}
+      disabled={!onPress}
+    >
       <View style={styles.row}>
         <View style={styles.iconContainer}>
           <Feather name="calendar" size={22} color={AuraColors.primary} />
@@ -48,9 +55,13 @@ export default function AppointmentCard({
             <Text style={styles.metaText}>{date} · {time}</Text>
           </View>
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: config.bg }]}>
-          <Feather name={config.icon as any} size={12} color={config.color} />
-          <Text style={[styles.statusText, { color: config.color }]}>{config.label}</Text>
+        <View style={styles.rightColumn}>
+          <View style={[styles.statusBadge, { backgroundColor: config.bg }]}>
+            <Feather name={config.icon as any} size={12} color={config.color} />
+            <Text style={[styles.statusText, { color: config.color }]}>{config.label}</Text>
+          </View>
+          {/* Muestra el precio si fue proporcionado */}
+          {price && <Text style={styles.priceText}>{price}</Text>}
         </View>
       </View>
     </TouchableOpacity>
@@ -101,6 +112,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: AuraColors.textMuted,
   },
+  rightColumn: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -112,5 +127,10 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  priceText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: AuraColors.primary,
   },
 });

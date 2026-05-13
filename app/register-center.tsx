@@ -45,6 +45,7 @@ export default function RegisterCenterScreen() {
   const [password, setPassword] = useState('');
   const [licenseFile, setLicenseFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [services, setServices] = useState<ServiceInput[]>([{ name: '', duration: '', price: '', image: null }]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const router = useRouter();
 
@@ -88,7 +89,7 @@ export default function RegisterCenterScreen() {
         type: 'application/pdf',
         copyToCacheDirectory: true,
       });
-      if (result.assets && result.assets.length > 0) {
+      if (!result.canceled && result.assets && result.assets.length > 0) {
         setLicenseFile(result.assets[0]);
       }
     } catch (err) {
@@ -102,43 +103,61 @@ export default function RegisterCenterScreen() {
       return;
     }
 
+    setIsSubmitting(true);
+
     // 1. Crear usuario
-    const { data: signUpData, error } = await supabase.auth.signUp({
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { full_name: ownerFullName, role: 'center_owner' } },
     });
     
-    if (error) {
-      Alert.alert('Error al registrar', error.message);
+    if (signUpError) {
+      Alert.alert('Error al registrar', signUpError.message);
+      setIsSubmitting(false);
       return;
     }
 
     const user = signUpData.user;
     if (!user) {
       Alert.alert('Error', 'No se pudo crear el usuario.');
+      setIsSubmitting(false);
       return;
     }
 
-    // 2. Subir licencia si existe
+    // 2. Subir licencia usando FormData
     let licenseUrl = '';
     if (licenseFile) {
-      const response = await fetch(licenseFile.uri);
-      const blob = await response.blob();
+      try {
+        const formData = new FormData();
+        formData.append('file', {
+          uri: licenseFile.uri,
+          name: licenseFile.name,
+          type: licenseFile.mimeType || 'application/pdf',
+        } as any);
 
-      const fileName = `${user.id}_${Date.now()}.pdf`;
-      const { error: uploadError } = await supabase.storage
-        .from('licenses')
-        .upload(fileName, blob, { contentType: 'application/pdf', upsert: true });
+        const fileName = `${user.id}_${Date.now()}.pdf`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('licenses')
+          .upload(fileName, formData);
 
-      if (uploadError) {
-        Alert.alert('Error al subir licencia', uploadError.message);
+        if (uploadError) {
+          console.error("Error subiendo licencia:", uploadError);
+          Alert.alert('Error al subir licencia', uploadError.message);
+          setIsSubmitting(false);
+          return;
+        }
+        licenseUrl = supabase.storage.from('licenses').getPublicUrl(fileName).data.publicUrl;
+      } catch (err: any) {
+        console.error("Error capturado subiendo licencia:", err);
+        Alert.alert('Error', err.message || 'Falló la subida del PDF.');
+        setIsSubmitting(false);
         return;
       }
-      licenseUrl = supabase.storage.from('licenses').getPublicUrl(fileName).data.publicUrl;
     }
 
-    // 3. Crear centro pendiente y OBTENER ID de inmediato
+    // 3. Crear centro pendiente y obtener el ID
     const { data: centerData, error: centerError } = await supabase.from('centers').insert({
       owner_id: user.id,
       name: centerName,
@@ -146,16 +165,17 @@ export default function RegisterCenterScreen() {
       description,
       license_url: licenseUrl,
       status: 'pending',
-    }).select('id').single(); // <-- Solución clave
+    }).select('id').single();
 
     if (centerError || !centerData) {
       Alert.alert('Error al crear centro', centerError?.message || 'Error desconocido.');
+      setIsSubmitting(false);
       return;
     }
 
     const centerId = centerData.id;
 
-    // 4. Procesar servicios
+    // 4. Procesar servicios usando FormData
     const validServices = services.filter(s => s.name.trim() !== '' && s.duration.trim() !== '' && s.price.trim() !== '');
 
     if (validServices.length > 0) {
@@ -165,17 +185,33 @@ export default function RegisterCenterScreen() {
         let imageUrl = '';
 
         if (service.image) {
-          const response = await fetch(service.image.uri);
-          const blob = await response.blob();
-          const fileExt = service.image.uri.split('.').pop() || 'jpg';
-          const fileName = `${user.id}_${centerId}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+          try {
+            const formData = new FormData();
+            const fileExt = service.image.uri.split('.').pop() || 'jpg';
+            const fileName = `${user.id}_${centerId}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+            
+            // Determinar MIME type básico basado en la extensión
+            let mimeType = 'image/jpeg';
+            if (fileExt.toLowerCase() === 'png') mimeType = 'image/png';
+            if (fileExt.toLowerCase() === 'webp') mimeType = 'image/webp';
 
-          const { error: uploadError } = await supabase.storage
-            .from('service-images')
-            .upload(fileName, blob, { contentType: `image/${fileExt}`, upsert: true });
+            formData.append('file', {
+              uri: service.image.uri,
+              name: fileName,
+              type: mimeType,
+            } as any);
 
-          if (!uploadError) {
-            imageUrl = supabase.storage.from('service-images').getPublicUrl(fileName).data.publicUrl;
+            const { error: uploadError } = await supabase.storage
+              .from('service-images')
+              .upload(fileName, formData);
+
+            if (!uploadError) {
+              imageUrl = supabase.storage.from('service-images').getPublicUrl(fileName).data.publicUrl;
+            } else {
+               console.error("Error subiendo imagen de servicio:", uploadError);
+            }
+          } catch (e) {
+            console.error("Error capturado de imagen:", e);
           }
         }
 
@@ -191,10 +227,12 @@ export default function RegisterCenterScreen() {
       const { error: servicesError } = await supabase.from('services').insert(servicesToInsert);
       if (servicesError) {
         Alert.alert('Error al guardar servicios', servicesError.message);
+        setIsSubmitting(false);
         return;
       }
     }
 
+    setIsSubmitting(false);
     Alert.alert('Solicitud enviada', 'Tu centro está pendiente de aprobación. Recibirás un correo cuando sea revisado.');
     router.replace('/login');
   };
@@ -245,7 +283,7 @@ export default function RegisterCenterScreen() {
                   keyboardType="numeric"
                 />
                 <Input
-                  label="Precio (€)"
+                  label="Precio (Bs)"
                   placeholder="50.00"
                   value={s.price}
                   onChangeText={(val) => updateService(index, 'price', val)}
@@ -305,6 +343,7 @@ export default function RegisterCenterScreen() {
           <Button
             title={step < 4 ? 'Continuar' : 'Enviar para Aprobación'}
             onPress={handleContinue}
+            loading={isSubmitting}
             icon={<Feather name="arrow-right" size={18} color="white" />}
             style={styles.continueButton}
           />
@@ -364,6 +403,6 @@ const styles = StyleSheet.create({
   },
   addServiceText: { color: AuraColors.primary, fontWeight: '600' },
   placeholder: { alignItems: 'center', paddingVertical: 40 },
-  placeholderText: { fontSize: 16, color: AuraColors.textMuted, marginTop: 12 },
+  placeholderText: { fontSize: 16, color: AuraColors.textMuted, marginTop: 12, textAlign: 'center' },
   continueButton: { marginTop: 20 },
 });
