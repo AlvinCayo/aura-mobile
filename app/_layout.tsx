@@ -16,27 +16,25 @@ function InitialLayout() {
   const segments = useSegments();
   const router = useRouter();
 
-  useEffect(() => {
-    // Si la autenticación aún no se inicializa, no hacemos nada
+useEffect(() => {
     if (!initialized) return;
 
-    // Lógica para detectar el evento de recuperación de contraseña (Deep Link)
     const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
         router.replace('/reset-password' as any);
       }
     });
 
-    // Lógica principal de redirección basada en la sesión
-    // Lógica principal de redirección basada en la sesión
-    const currentSegment = segments[0] as string; // <-- Soluciona el segundo error
-    const inAuthGroup = currentSegment === '(tabs)' || currentSegment === 'admin' || currentSegment === 'payment';
+    const currentSegment = segments[0] as string;
+    
+    // Lista de rutas exclusivas para usuarios NO logueados
+    const publicRoutes = ['login', 'register', 'recovery', 'reset-password'];
 
-    if (session && !inAuthGroup) {
-      // Si hay sesión pero no está en un grupo protegido, enviarlo a (tabs)
+    if (session && publicRoutes.includes(currentSegment)) {
+      // Si ya inició sesión e intenta ir al Login/Registro, lo mandamos a Tabs
       router.replace('/(tabs)');
-    } else if (!session && inAuthGroup) {
-      // Si NO hay sesión pero intenta acceder a un grupo protegido, enviarlo a login
+    } else if (!session && !publicRoutes.includes(currentSegment) && currentSegment !== undefined) {
+      // Si NO ha iniciado sesión e intenta ir a Tabs, Become Center o Admin, lo mandamos a Login
       router.replace('/login');
     }
 

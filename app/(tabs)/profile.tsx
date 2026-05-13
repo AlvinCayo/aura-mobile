@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -23,7 +24,9 @@ export default function ProfileScreen() {
   };
 
   // Obtenemos el rol del usuario (si es cliente normal o dueño)
+  // Obtenemos el rol del usuario
   const isOwner = user?.user_metadata?.role === 'center_owner';
+  const isSuperAdmin = user?.user_metadata?.role === 'superadmin'; // <-- Añade esta línea
 
   return (
     <SafeAreaView style={styles.container}>
@@ -31,9 +34,14 @@ export default function ProfileScreen() {
         {/* Cabecera del perfil */}
         <View style={styles.profileHeader}>
           <View style={styles.avatar}>
+            {/* Si el usuario tiene avatarUrl en su perfil, lo mostramos, si no, la inicial */}
+            {user?.user_metadata?.avatar_url ? (
+              <Image source={{ uri: user.user_metadata.avatar_url }} style={styles.avatarImage} />
+            ) : (
             <Text style={{ fontSize: 28, fontWeight: '700', color: AuraColors.primary }}>
               {user?.user_metadata?.full_name ? user.user_metadata.full_name.charAt(0).toUpperCase() : 'U'}
-            </Text>
+              </Text>
+            )}
           </View>
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{user?.user_metadata?.full_name || 'Usuario'}</Text>
@@ -54,6 +62,23 @@ export default function ProfileScreen() {
                 label="Convertirme en Centro"
                 onPress={() => router.push('/become-center' as any)}
               />
+            </View>
+          </View>
+        )}
+
+        {/* PANEL SECRETO DE SUPER ADMINISTRADOR AURA */}
+        {isSuperAdmin && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: AuraColors.destructive }]}>
+              AURA Control Center (Admin)
+            </Text>
+            <View style={styles.settingsGroup}>
+              <SettingsItem
+                icon="shield"
+                label="Aprobar Nuevos Centros"
+                onPress={() => router.push('/admin-platform/approvals' as any)}
+              />
+              {/* Aquí a futuro puedes poner más cosas como "Ver Reportes" o "Manejo de Pagos" */}
             </View>
           </View>
         )}
@@ -124,7 +149,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: AuraColors.background },
   scrollContent: { paddingBottom: 40 },
   profileHeader: { flexDirection: 'row', alignItems: 'center', padding: 24, backgroundColor: AuraColors.card, borderBottomWidth: 1, borderBottomColor: AuraColors.border, gap: 16 },
-  avatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: AuraColors.primaryLight, justifyContent: 'center', alignItems: 'center' },
+  avatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: AuraColors.primaryLight, justifyContent: 'center', alignItems: 'center',overflow: 'hidden', },
+  avatarImage: { width: '100%', height: '100%', borderRadius: 36,},
   userInfo: { flex: 1 },
   userName: { fontSize: 20, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 4 },
   userEmail: { fontSize: 14, color: AuraColors.textSecondary },

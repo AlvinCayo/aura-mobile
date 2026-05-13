@@ -88,11 +88,26 @@ export default function AppointmentsScreen() {
           </TouchableOpacity>
         )}
         
+        {/* Lógica de Pendiente: Mensaje informativo */}
         {item.status === 'pending' && (
           <View style={styles.infoBox}>
             <Feather name="info" size={14} color={AuraColors.textMuted} />
             <Text style={styles.infoText}>El pago se habilitará cuando el centro apruebe tu cita.</Text>
           </View>
+        )}
+
+        {/* NUEVO: Botón de Reseña si la cita ya fue completada */}
+        {item.status === 'completed' && (
+          <TouchableOpacity 
+            style={[styles.payButton, { backgroundColor: AuraColors.primaryLight, borderWidth: 1, borderColor: AuraColors.primary }]}
+            onPress={() => router.push({
+              pathname: '/review/[centerId]',
+              params: { centerId: item.center_id || item.center?.id }
+            } as any)}
+          >
+            <Feather name="star" size={18} color={AuraColors.primary} />
+            <Text style={[styles.payButtonText, { color: AuraColors.primary }]}>Calificar Experiencia</Text>
+          </TouchableOpacity>
         )}
       </View>
     );
