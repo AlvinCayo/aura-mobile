@@ -82,6 +82,23 @@ export default function BecomeCenterScreen() {
     setIsSubmitting(true);
 
     try {
+      // Validar primero si el perfil existe para prevenir el error de constraint foreign key
+      const { data: profileCheck, error: checkError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', user.id)
+        .single();
+
+      if (checkError || !profileCheck) {
+          // Si por alguna razón la cuenta no tiene perfil público creado (ej. Google Login incompleto)
+          // lo forzamos a crearse con datos por defecto antes de registrar el centro.
+          await supabase.from('profiles').insert([{ id: user.id, email: user.email, role: 'center_owner' }]);
+      } else {
+         // Si ya existe, nos aseguramos que el rol sea el correcto.
+         await supabase.from('profiles').update({ role: 'center_owner' }).eq('id', user.id);
+      }
+
+
       // 1. Subir Licencia
       let licenseUrl = '';
       if (licenseFile) {
@@ -93,7 +110,7 @@ export default function BecomeCenterScreen() {
         licenseUrl = supabase.storage.from('licenses').getPublicUrl(fileName).data.publicUrl;
       }
 
-      // 2. Crear Centro (AÑADIMOS payment_qr_url: '' PARA SOLUCIONAR EL ERROR)
+      // 2. Crear Centro 
       const { data: centerData, error: centerError } = await supabase.from('centers').insert({
         owner_id: user.id, 
         name: centerName, 
@@ -101,7 +118,7 @@ export default function BecomeCenterScreen() {
         description, 
         license_url: licenseUrl, 
         status: 'pending',
-        payment_qr_url: '' // <- Solución al not-null constraint
+        payment_qr_url: '' 
       }).select('id').single();
 
       if (centerError) throw centerError;
@@ -134,16 +151,16 @@ export default function BecomeCenterScreen() {
         if (servicesError) throw servicesError;
       }
 
-      // 4. Actualizar metadata de Supabase (role) y Perfil
+      // 4. Actualizar metadata de Supabase (role)
       await supabase.auth.updateUser({ data: { role: 'center_owner' } });
-      await supabase.from('profiles').update({ role: 'center_owner' }).eq('id', user.id);
+      
 
       Alert.alert('¡Solicitud enviada!', 'Tu centro ha sido registrado y está en revisión.', [
         { text: 'Finalizar', onPress: () => router.replace('/(tabs)') }
       ]);
 
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Ocurrió un error inesperado.');
+      Alert.alert('Error', error.message || 'Ocurrió un error inesperado al guardar.');
     } finally {
       setIsSubmitting(false);
     }

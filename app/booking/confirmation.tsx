@@ -1,45 +1,109 @@
 import { Feather } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Button from '../../src/components/ui/Button';
 import { AuraColors } from '../../src/theme/colors';
 
 export default function BookingConfirmationScreen() {
-  const { total, commission, serviceName, centerName, date, time } = useLocalSearchParams<{
-    total: string; commission: string; serviceName: string; centerName: string; date: string; time: string;
-  }>();
   const router = useRouter();
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
         <View style={styles.iconCircle}>
-          <Feather name="check-circle" size={64} color={AuraColors.success} />
+          <Feather name="check" size={48} color="white" />
         </View>
-        <Text style={styles.title}>¡Solicitud enviada!</Text>
-        <Text style={styles.subtitle}>{serviceName} en {centerName}</Text>
-        <Text>{date} a las {time}</Text>
-        <View style={styles.summary}>
-          <Text>Comisión plataforma: {commission} €</Text>
-          <Text style={styles.total}>Total a pagar tras aprobación: {total} €</Text>
+
+        <Text style={styles.title}>¡Reserva Solicitada!</Text>
+        
+        <Text style={styles.subtitle}>
+          Tu cita ha sido enviada con éxito. En este momento se encuentra en estado <Text style={{fontWeight: '700', color: '#F59E0B'}}>Pendiente</Text>.
+        </Text>
+
+        <View style={styles.infoBox}>
+          <Feather name="clock" size={20} color={AuraColors.primary} style={{ marginBottom: 12 }} />
+          <Text style={styles.infoText}>
+            El centro de estética revisará su disponibilidad. Te notificaremos en cuanto aprueben tu solicitud para que puedas realizar el pago.
+          </Text>
         </View>
-        <TouchableOpacity style={styles.homeButton} onPress={() => router.replace('/(tabs)')}>
-          <Text style={styles.homeButtonText}>Volver al inicio</Text>
-        </TouchableOpacity>
+
+        <View style={styles.actions}>
+          <Button 
+            title="Ver mis Citas" 
+            onPress={() => router.replace('/(tabs)/appointments')}
+            icon={<Feather name="calendar" size={18} color="white" />}
+          />
+          
+          <Button 
+            title="Volver al Inicio" 
+            variant="outline"
+            onPress={() => router.replace('/(tabs)')}
+            style={{ marginTop: 16 }}
+          />
+        </View>
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: AuraColors.background, justifyContent: 'center', alignItems: 'center' },
-  content: { padding: 24, alignItems: 'center' },
-  iconCircle: { marginBottom: 20 },
-  title: { fontSize: 24, fontWeight: '700', marginBottom: 8 },
-  subtitle: { fontSize: 16, color: AuraColors.textSecondary, marginBottom: 4 },
-  summary: { marginVertical: 20, alignItems: 'center' },
-  total: { fontWeight: '700', fontSize: 16, marginTop: 8 },
-  homeButton: { backgroundColor: AuraColors.primary, paddingVertical: 14, paddingHorizontal: 32, borderRadius: 12 },
-  homeButtonText: { color: 'white', fontWeight: '600' },
+  container: {
+    flex: 1,
+    backgroundColor: AuraColors.background,
+  },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  iconCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: AuraColors.success,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 32,
+    shadowColor: AuraColors.success,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: AuraColors.textPrimary,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    color: AuraColors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 40,
+  },
+  infoBox: {
+    backgroundColor: AuraColors.primaryLight,
+    padding: 24,
+    borderRadius: 16,
+    alignItems: 'center',
+    marginBottom: 48,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: AuraColors.primary + '30',
+  },
+  infoText: {
+    fontSize: 14,
+    color: AuraColors.textPrimary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  actions: {
+    width: '100%',
+  },
 });

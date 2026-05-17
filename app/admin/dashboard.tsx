@@ -1,7 +1,15 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KpiCard from '../../src/components/ui/KpiCard';
 import { useAuth } from '../../src/contexts/AuthContext';
@@ -9,21 +17,23 @@ import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
 export default function AdminDashboardScreen() {
-  const router = useRouter();
   const { user } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [center, setCenter] = useState<any>(null);
-  const [stats, setStats] = useState({ pending: 0, today: 0, services: 0 });
+  const router = useRouter();
 
-  useEffect(() => {
-    loadDashboardData();
-  }, [user]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [center, setCenter] = useState<any>(null);
+  
+  const [stats, setStats] = useState({
+    pendingCount: 0,
+    confirmedCount: 0,
+    estimatedEarnings: 0,
+  });
 
   const loadDashboardData = async () => {
     if (!user) return;
-    
+
     try {
-      // 1. Obtener el centro del usuario
       const { data: centerData, error: centerError } = await supabase
         .from('centers')
         .select('*')
@@ -31,46 +41,53 @@ export default function AdminDashboardScreen() {
         .single();
 
       if (centerError || !centerData) {
-        // Si por alguna razón no tiene centro, lo devolvemos
-        Alert.alert('Error', 'No se encontró un centro asociado a tu cuenta.');
-        router.replace('/(tabs)/profile');
+        setLoading(false);
+        setRefreshing(false);
         return;
       }
+
       setCenter(centerData);
 
-      // 2. Obtener estadísticas (Citas pendientes)
-      const { count: pendingCount } = await supabase
+      const { data: appointments, error: appError } = await supabase
         .from('appointments')
-        .select('*', { count: 'exact', head: true })
-        .eq('center_id', centerData.id)
-        .eq('status', 'pending');
-
-      // 3. Obtener citas de hoy (aprobadas o completadas)
-      const today = new Date().toISOString().slice(0, 10);
-      const { count: todayCount } = await supabase
-        .from('appointments')
-        .select('*', { count: 'exact', head: true })
-        .eq('center_id', centerData.id)
-        .eq('appointment_date', today)
-        .in('status', ['confirmed', 'completed']);
-
-      // 4. Obtener cantidad de servicios activos
-      const { count: servicesCount } = await supabase
-        .from('services')
-        .select('*', { count: 'exact', head: true })
+        .select('status, service:services(price)')
         .eq('center_id', centerData.id);
 
-      setStats({
-        pending: pendingCount || 0,
-        today: todayCount || 0,
-        services: servicesCount || 0,
-      });
+      if (!appError && appointments) {
+        let pending = 0;
+        let confirmed = 0;
+        let earnings = 0;
 
+        appointments.forEach((app: any) => {
+          if (app.status === 'pending') pending++;
+          if (app.status === 'confirmed') confirmed++;
+          if (app.status === 'confirmed' || app.status === 'completed' || app.status === 'paid') {
+            const price = parseFloat(app.service?.price || '0');
+            earnings += price;
+          }
+        });
+
+        setStats({
+          pendingCount: pending,
+          confirmedCount: confirmed,
+          estimatedEarnings: earnings,
+        });
+      }
     } catch (error) {
-      console.error("Error cargando dashboard:", error);
+      console.error('Error cargando el dashboard de administración:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [user]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadDashboardData();
   };
 
   if (loading) {
@@ -81,66 +98,103 @@ export default function AdminDashboardScreen() {
     );
   }
 
+  if (!center) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Feather name="alert-circle" size={64} color={AuraColors.textMuted} />
+          <Text style={styles.errorTitle}>No se encontró un Centro</Text>
+          <Text style={styles.errorSubtitle}>
+            Tu cuenta no tiene un centro registrado o aún no ha sido aprobado.
+          </Text>
+          <TouchableOpacity style={styles.backButtonCenter} onPress={() => router.replace('/(tabs)/profile')}>
+            <Text style={styles.backButtonText}>Volver al Perfil</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[AuraColors.primary]} />}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.replace('/(tabs)/profile')} style={styles.backButton}>
-            <Feather name="arrow-left" size={20} color={AuraColors.textPrimary} />
+          <View>
+            <Text style={styles.welcomeText}>Panel de Gestión</Text>
+            <Text style={styles.centerName}>{center.name}</Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.profileBadge} 
+            onPress={() => router.push('/admin/center-profile')}
+          >
+            <Feather name="settings" size={20} color={AuraColors.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Panel de Control</Text>
-          <View style={{ width: 40 }} />
         </View>
 
-        <View style={styles.welcomeSection}>
-          <Text style={styles.welcomeText}>Hola,</Text>
-          <Text style={styles.centerName}>{center?.name}</Text>
-          
-          {/* Alerta visible si AURA aún no aprueba el centro */}
-          {center?.status === 'pending' && (
-            <View style={styles.pendingBadge}>
-              <Feather name="clock" size={14} color="#F59E0B" />
-              <Text style={styles.pendingBadgeText}>Cuenta en revisión por AURA</Text>
-            </View>
-          )}
+        <Text style={styles.sectionTitle}>Resumen del Negocio</Text>
+        <View style={styles.kpiRow}>
+          <KpiCard
+            title="Por Aprobar"
+            value={stats.pendingCount.toString()}
+            icon="clock"
+            color="#F59E0B"
+          />
+          <KpiCard
+            title="Confirmadas"
+            value={stats.confirmedCount.toString()}
+            icon="calendar"
+            color={AuraColors.success}
+          />
+        </View>
+        <View style={{ marginTop: 12 }}>
+          <KpiCard
+            title="Ingresos Estimados"
+            value={`${stats.estimatedEarnings.toFixed(2)} Bs`}
+            icon="dollar-sign"
+            color={AuraColors.primary}
+          />
         </View>
 
-        <Text style={styles.sectionTitle}>Resumen General</Text>
-        <View style={styles.kpiGrid}>
-          <KpiCard title="Citas Hoy" value={stats.today.toString()} icon="calendar" color={AuraColors.primary} />
-          <KpiCard title="Pendientes" value={stats.pending.toString()} icon="clock" color="#F59E0B" />
-          <KpiCard title="Servicios" value={stats.services.toString()} icon="grid" color={AuraColors.success} />
-        </View>
-
-        <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
-        <View style={styles.actionsGrid}>
-          
-          <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/admin/appointments')}>
-            <View style={[styles.actionIconContainer, { backgroundColor: AuraColors.primaryLight }]}>
-              <Feather name="inbox" size={24} color={AuraColors.primary} />
-              {stats.pending > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{stats.pending}</Text>
-                </View>
-              )}
+        <Text style={[styles.sectionTitle, { marginTop: 32 }]}>Herramientas de Gestión</Text>
+        
+        <View style={styles.menuGrid}>
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/admin/appointments')}>
+            <View style={[styles.iconWrapper, { backgroundColor: '#E0F2FE' }]}>
+              <Feather name="list" size={24} color="#0284C7" />
             </View>
-            <Text style={styles.actionText}>Solicitudes</Text>
+            <Text style={styles.menuLabel}>Gestión de Citas</Text>
+            {stats.pendingCount > 0 && (
+              <View style={styles.badgeNotification}>
+                <Text style={styles.badgeText}>{stats.pendingCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/admin/services')}>
-            <View style={[styles.actionIconContainer, { backgroundColor: '#EDF7ED' }]}>
-              <Feather name="list" size={24} color={AuraColors.success} />
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/admin/services')}>
+            <View style={[styles.iconWrapper, { backgroundColor: '#E0FDEE' }]}>
+              <Feather name="scissors" size={24} color="#16A34A" />
             </View>
-            <Text style={styles.actionText}>Mis Servicios</Text>
+            <Text style={styles.menuLabel}>Mis Servicios</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/admin/qr-generator')}>
-            <View style={[styles.actionIconContainer, { backgroundColor: '#F3E8FF' }]}>
-              <Feather name="maximize" size={24} color="#9333EA" />
+          {/* AQUÍ ESTÁ LA CORRECCIÓN DEL ÍCONO (Cambiado de qr-code a grid) */}
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/admin/qr-generator')}>
+            <View style={[styles.iconWrapper, { backgroundColor: '#FEE2E2' }]}>
+              <Feather name="grid" size={24} color={AuraColors.destructive} />
             </View>
-            <Text style={styles.actionText}>Mi QR Simple</Text>
+            <Text style={styles.menuLabel}>Configurar QR</Text>
           </TouchableOpacity>
 
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.replace('/(tabs)/profile')}>
+            <View style={[styles.iconWrapper, { backgroundColor: '#F3E8FF' }]}>
+              <Feather name="user" size={24} color="#7C3AED" />
+            </View>
+            <Text style={styles.menuLabel}>Modo Cliente</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -150,21 +204,22 @@ export default function AdminDashboardScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: AuraColors.background },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  scrollContent: { padding: 24, paddingBottom: 40 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: AuraColors.card, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: AuraColors.border },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: AuraColors.textPrimary },
-  welcomeSection: { marginBottom: 32 },
-  welcomeText: { fontSize: 16, color: AuraColors.textSecondary },
-  centerName: { fontSize: 28, fontWeight: '800', color: AuraColors.primary, marginTop: 4 },
-  pendingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FDF3E0', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, alignSelf: 'flex-start', marginTop: 12, gap: 6 },
-  pendingBadgeText: { color: '#F59E0B', fontWeight: '600', fontSize: 13 },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 16 },
-  kpiGrid: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginBottom: 32 },
-  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
-  actionCard: { width: '30%', alignItems: 'center', gap: 8 },
-  actionIconContainer: { width: 64, height: 64, borderRadius: 20, justifyContent: 'center', alignItems: 'center', position: 'relative' },
-  actionText: { fontSize: 13, fontWeight: '500', color: AuraColors.textSecondary, textAlign: 'center' },
-  badge: { position: 'absolute', top: -4, right: -4, backgroundColor: AuraColors.destructive, width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'white' },
-  badgeText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
+  scrollContent: { padding: 24 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 },
+  welcomeText: { fontSize: 14, color: AuraColors.textSecondary, fontWeight: '500' },
+  centerName: { fontSize: 24, fontWeight: '800', color: AuraColors.textPrimary, marginTop: 2 },
+  profileBadge: { width: 44, height: 44, borderRadius: 14, backgroundColor: AuraColors.card, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: AuraColors.border },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 16 },
+  kpiRow: { flexDirection: 'row', gap: 12 },
+  menuGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginTop: 4 },
+  menuItem: { width: '47%', backgroundColor: AuraColors.card, padding: 20, borderRadius: 20, borderWidth: 1, borderColor: AuraColors.border, position: 'relative' },
+  iconWrapper: { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
+  menuLabel: { fontSize: 15, fontWeight: '600', color: AuraColors.textPrimary },
+  badgeNotification: { position: 'absolute', top: 12, right: 12, backgroundColor: '#EF4444', width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
+  badgeText: { color: 'white', fontSize: 11, fontWeight: '700' },
+  errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
+  errorTitle: { fontSize: 20, fontWeight: '700', color: AuraColors.textPrimary, marginTop: 16 },
+  errorSubtitle: { fontSize: 14, color: AuraColors.textSecondary, textAlign: 'center', marginTop: 8, lineHeight: 22 },
+  backButtonCenter: { marginTop: 24, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: AuraColors.primary, borderRadius: 12 },
+  backButtonText: { color: 'white', fontWeight: '700' }
 });
