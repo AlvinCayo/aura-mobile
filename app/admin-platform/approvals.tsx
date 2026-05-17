@@ -2,186 +2,143 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import React, { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
 export default function ApprovalsScreen() {
   const router = useRouter();
-  const [pendingCenters, setPendingCenters] = useState<any[]>([]);
+  const [centers, setCenters] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadPendingCenters = async () => {
-    // Buscamos solo los centros con estado "pending"
-    const { data, error } = await supabase
-      .from('centers')
-      .select('*')
-      .eq('status', 'pending');
+  const fetchPendingCenters = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('centers')
+        .select(`id, name, address, description, license_url, created_at, owner:owner_id(full_name, email)`)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Error cargando centros:', error);
-    } else {
-      setPendingCenters(data || []);
+      if (error) throw error;
+      setCenters(data || []);
+    } catch (error) {
+      console.error('Error cargando solicitudes:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-    setLoading(false);
-    setRefreshing(false);
   };
 
-  useEffect(() => {
-    loadPendingCenters();
-  }, []);
+  useEffect(() => { fetchPendingCenters(); }, []);
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadPendingCenters();
+  const onRefresh = () => { setRefreshing(true); fetchPendingCenters(); };
+
+  const handleOpenLicense = async (url: string) => {
+    if (!url) return Alert.alert('Sin Documento', 'Este centro no adjuntó una licencia PDF.');
+    await WebBrowser.openBrowserAsync(url);
   };
 
-  const handleUpdateStatus = async (centerId: string, newStatus: 'approved' | 'rejected', centerName: string) => {
+  const updateCenterStatus = async (id: string, status: 'approved' | 'rejected', centerName: string) => {
     Alert.alert(
-      newStatus === 'approved' ? 'Aprobar Centro' : 'Rechazar Centro',
-      `¿Estás seguro de que deseas ${newStatus === 'approved' ? 'aprobar' : 'rechazar'} a "${centerName}"?`,
+      status === 'approved' ? 'Aprobar Centro' : 'Rechazar Centro',
+      `¿Estás seguro de que deseas ${status === 'approved' ? 'aprobar' : 'rechazar'} al establecimiento "${centerName}"?`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: newStatus === 'approved' ? 'Sí, Aprobar' : 'Sí, Rechazar',
-          style: newStatus === 'approved' ? 'default' : 'destructive',
+          text: 'Confirmar',
+          style: status === 'rejected' ? 'destructive' : 'default',
           onPress: async () => {
-            const { error } = await supabase
-              .from('centers')
-              .update({ status: newStatus })
-              .eq('id', centerId);
-
-            if (error) {
-              Alert.alert('Error', 'No se pudo actualizar el estado.');
-            } else {
-              Alert.alert('Éxito', `El centro ha sido ${newStatus === 'approved' ? 'aprobado y ya es visible' : 'rechazado'}.`);
-              // Quitamos el centro de la lista local
-              setPendingCenters((prev) => prev.filter((c) => c.id !== centerId));
+            const { error } = await supabase.from('centers').update({ status }).eq('id', id);
+            if (error) Alert.alert('Error', 'No se pudo procesar la solicitud.');
+            else {
+              Alert.alert('Éxito', `Centro ${status === 'approved' ? 'aprobado' : 'rechazado'} correctamente.`);
+              setCenters(prev => prev.filter(c => c.id !== id));
             }
-          },
-        },
+          }
+        }
       ]
     );
   };
 
-  const openLicense = async (url: string) => {
-    if (url) {
-      await WebBrowser.openBrowserAsync(url);
-    } else {
-      Alert.alert('Sin documento', 'Este centro no subió una licencia válida.');
-    }
-  };
-
-  const renderCenterItem = ({ item }: { item: any }) => (
+  const renderItem = ({ item }: { item: any }) => (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
-        <View style={styles.headerIcon}>
-          <Feather name="award" size={24} color={AuraColors.primary} />
-        </View>
-        <View style={styles.headerInfo}>
-          <Text style={styles.centerName}>{item.name}</Text>
-          <Text style={styles.centerAddress}>{item.address}</Text>
-        </View>
+        <Text style={styles.centerName}>{item.name}</Text>
+        <Text style={styles.dateText}>{new Date(item.created_at).toLocaleDateString()}</Text>
       </View>
-
-      <Text style={styles.description} numberOfLines={3}>
-        {item.description || 'Sin descripción.'}
-      </Text>
-
-      <TouchableOpacity 
-        style={styles.documentButton} 
-        onPress={() => openLicense(item.license_url)}
-      >
-        <Feather name="file-text" size={16} color={AuraColors.primary} />
-        <Text style={styles.documentText}>Ver Licencia de Funcionamiento</Text>
+      <View style={styles.infoRow}><Feather name="map-pin" size={14} color={AuraColors.textSecondary} /><Text style={styles.infoText}>{item.address}</Text></View>
+      <View style={styles.infoRow}><Feather name="user" size={14} color={AuraColors.textSecondary} /><Text style={styles.infoText}>{item.owner?.full_name} ({item.owner?.email})</Text></View>
+      
+      <TouchableOpacity style={styles.documentButton} onPress={() => handleOpenLicense(item.license_url)}>
+        <Feather name="file-text" size={18} color="#0284C7" />
+        <Text style={styles.documentText}>Ver Licencia de Funcionamiento PDF</Text>
       </TouchableOpacity>
 
       <View style={styles.actionsRow}>
-        <TouchableOpacity 
-          style={[styles.actionButton, styles.rejectButton]} 
-          onPress={() => handleUpdateStatus(item.id, 'rejected', item.name)}
-        >
-          <Feather name="x" size={18} color={AuraColors.destructive} />
-          <Text style={styles.rejectText}>Rechazar</Text>
+        <TouchableOpacity style={[styles.btn, styles.btnReject]} onPress={() => updateCenterStatus(item.id, 'rejected', item.name)}>
+          <Feather name="x" size={18} color="#EF4444" />
+          <Text style={styles.textReject}>Rechazar</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.actionButton, styles.approveButton]} 
-          onPress={() => handleUpdateStatus(item.id, 'approved', item.name)}
-        >
+        <TouchableOpacity style={[styles.btn, styles.btnApprove]} onPress={() => updateCenterStatus(item.id, 'approved', item.name)}>
           <Feather name="check" size={18} color="white" />
-          <Text style={styles.approveText}>Aprobar</Text>
+          <Text style={styles.textApprove}>Aprobar Operación</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 
-  if (loading) {
-    return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={AuraColors.primary} /></View>;
-  }
-
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Feather name="arrow-left" size={20} color={AuraColors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Aprobaciones Pendientes</Text>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}><Feather name="arrow-left" size={20} color={AuraColors.textPrimary} /></TouchableOpacity>
+        <Text style={styles.headerTitle}>Solicitudes Nuevas</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      <FlatList
-        data={pendingCenters}
-        keyExtractor={(item) => item.id}
-        renderItem={renderCenterItem}
-        contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[AuraColors.primary]} />}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Feather name="check-circle" size={48} color={AuraColors.success} style={{ opacity: 0.5 }} />
-            <Text style={styles.emptyTitle}>¡Todo al día!</Text>
-            <Text style={styles.emptyText}>No hay ningún centro esperando aprobación en este momento.</Text>
-          </View>
-        }
-      />
+      {loading ? <View style={styles.centerLoading}><ActivityIndicator size="large" color={AuraColors.primary} /></View> : (
+        <FlatList
+          data={centers}
+          keyExtractor={item => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={styles.listContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[AuraColors.primary]} />}
+          ListEmptyComponent={
+            <View style={styles.emptyBox}>
+              <Feather name="check-circle" size={48} color={AuraColors.success} />
+              <Text style={styles.emptyTitle}>Todo al día</Text>
+              <Text style={styles.emptySub}>No hay centros pendientes de aprobación.</Text>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: AuraColors.background },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, paddingBottom: 12 },
   backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: AuraColors.card, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: AuraColors.border },
   headerTitle: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary },
-  listContent: { padding: 24, paddingBottom: 40 },
-  card: { backgroundColor: AuraColors.card, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: AuraColors.border },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  headerIcon: { width: 48, height: 48, borderRadius: 12, backgroundColor: AuraColors.primaryLight, justifyContent: 'center', alignItems: 'center' },
-  headerInfo: { flex: 1 },
-  centerName: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary },
-  centerAddress: { fontSize: 13, color: AuraColors.textSecondary, marginTop: 2 },
-  description: { fontSize: 14, color: AuraColors.textSecondary, lineHeight: 20, marginBottom: 16 },
-  documentButton: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, backgroundColor: '#F8FAFC', borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 16, justifyContent: 'center' },
-  documentText: { color: AuraColors.primary, fontWeight: '600', fontSize: 14 },
+  centerLoading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  listContent: { padding: 24 },
+  card: { backgroundColor: AuraColors.card, padding: 20, borderRadius: 16, borderWidth: 1, borderColor: AuraColors.border, marginBottom: 16 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  centerName: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary, flex: 1 },
+  dateText: { fontSize: 12, color: AuraColors.textMuted },
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  infoText: { fontSize: 14, color: AuraColors.textSecondary },
+  documentButton: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#E0F2FE', padding: 12, borderRadius: 10, marginTop: 12, marginBottom: 16 },
+  documentText: { color: '#0284C7', fontWeight: '600', fontSize: 14 },
   actionsRow: { flexDirection: 'row', gap: 12 },
-  actionButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 10, gap: 6 },
-  rejectButton: { backgroundColor: '#FDEDED' },
-  rejectText: { color: AuraColors.destructive, fontWeight: '600', fontSize: 14 },
-  approveButton: { backgroundColor: AuraColors.primary },
-  approveText: { color: 'white', fontWeight: '600', fontSize: 14 },
-  emptyState: { alignItems: 'center', marginTop: 80, paddingHorizontal: 40 },
+  btn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 10 },
+  btnReject: { backgroundColor: '#FEE2E2' },
+  textReject: { color: '#EF4444', fontWeight: '700' },
+  btnApprove: { backgroundColor: AuraColors.success },
+  textApprove: { color: 'white', fontWeight: '700' },
+  emptyBox: { alignItems: 'center', marginTop: 100 },
   emptyTitle: { fontSize: 20, fontWeight: '700', color: AuraColors.textPrimary, marginTop: 16 },
-  emptyText: { fontSize: 14, color: AuraColors.textSecondary, textAlign: 'center', marginTop: 8, lineHeight: 22 },
+  emptySub: { fontSize: 14, color: AuraColors.textSecondary, marginTop: 8 },
 });

@@ -1,270 +1,185 @@
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Button from '../../src/components/ui/Button';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
-type FilterTab = 'pending' | 'confirmed' | 'history';
-
-export default function AdminAppointmentsScreen() {
-  const { user } = useAuth();
+export default function PaymentScreen() {
+  const { appointmentId } = useLocalSearchParams<{ appointmentId: string }>();
   const router = useRouter();
+  const { user } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<FilterTab>('pending');
-  const [appointments, setAppointments] = useState<any[]>([]);
-  const [centerId, setCenterId] = useState<string | null>(null);
+  const [appointment, setAppointment] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [receiptImage, setReceiptImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fetchCenterAndAppointments = async () => {
+  useEffect(() => {
+    const fetchAppointmentDetails = async () => {
+      if (!appointmentId) return;
+      try {
+        const { data, error } = await supabase
+          .from('appointments')
+          .select(`id, status, service:service_id(name, price), center:center_id(name)`)
+          .eq('id', appointmentId)
+          .single();
+        if (error) throw error;
+        setAppointment(data);
+      } catch (error: any) {
+        Alert.alert('Error', 'No se pudo cargar la información de la reserva.');
+        router.back();
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAppointmentDetails();
+  }, [appointmentId]);
+
+  // REGLA MATEMÁTICA ANTI-FRAUDE
+  const servicePrice = parseFloat(appointment?.service?.price || '0');
+  const MINIMUM_COMMISSION = 3.00; 
+  const reservationFee = Math.max(servicePrice * 0.10, MINIMUM_COMMISSION);
+  const localBalance = servicePrice; 
+
+  const pickReceiptImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') return Alert.alert('Permiso necesario', 'Necesitamos acceso a la galería para subir tu comprobante.');
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, quality: 0.7 });
+    if (!result.canceled && result.assets.length > 0) setReceiptImage(result.assets[0]);
+  };
+
+  const handleSubmitPayment = async () => {
+    if (!receiptImage) return Alert.alert('Comprobante requerido', 'Sube la captura de pantalla de la transferencia.');
     if (!user) return;
+    setIsSubmitting(true);
 
     try {
-      // 1. Obtener el ID del centro asociado al dueño
-      let currentCenterId = centerId;
-      if (!currentCenterId) {
-        const { data: centerData } = await supabase
-          .from('centers')
-          .select('id')
-          .eq('owner_id', user.id)
-          .single();
-        if (centerData) {
-          currentCenterId = centerData.id;
-          setCenterId(centerData.id);
-        }
-      }
+      const formData = new FormData();
+      const fileExt = receiptImage.uri.split('.').pop() || 'jpg';
+      const fileName = `reserva_${appointmentId}_${Date.now()}.${fileExt}`;
+      formData.append('file', { uri: receiptImage.uri, name: fileName, type: `image/${fileExt}` } as any);
 
-      if (!currentCenterId) {
-        setLoading(false);
-        return;
-      }
+      const { error: uploadError } = await supabase.storage.from('receipts').upload(fileName, formData);
+      if (uploadError) throw uploadError;
 
-      // 2. Construir la consulta según la pestaña seleccionada
-      let query = supabase
-        .from('appointments')
-        .select(`
-          id,
-          appointment_date,
-          start_time,
-          status,
-          profiles:client_id(full_name, phone),
-          service:service_id(name, price)
-        `)
-        .eq('center_id', currentCenterId)
-        .order('appointment_date', { ascending: true })
-        .order('start_time', { ascending: true });
+      const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(fileName);
 
-      if (activeTab === 'pending') {
-        query = query.eq('status', 'pending');
-      } else if (activeTab === 'confirmed') {
-        query = query.eq('status', 'confirmed');
-      } else {
-        // Historial contiene completadas, canceladas o pagadas
-        query = query.in('status', ['completed', 'cancelled', 'paid']);
-      }
+      const { error: updateError } = await supabase.from('appointments').update({
+        status: 'paid', 
+        receipt_url: publicUrl,
+        reservation_fee: reservationFee,
+        local_balance_due: localBalance
+      }).eq('id', appointmentId);
 
-      const { data, error } = await query;
-      if (!error && data) {
-        setAppointments(data);
-      }
-    } catch (error) {
-      console.error('Error cargando citas para administrador:', error);
+      if (updateError) throw updateError;
+      
+      // LOG DE AUDITORÍA
+      await supabase.from('audit_logs').insert({
+        appointment_id: appointmentId, actor_id: user?.id, action: 'RESERVATION_FEE_PAID', details: { fee: reservationFee }
+      });
+
+      Alert.alert('¡Reserva Confirmada!', 'El monto ha sido enviado. Tu turno está asegurado.', [{ text: 'Aceptar', onPress: () => router.replace('/(tabs)/appointments') }]);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Ocurrió un problema.');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      setIsSubmitting(false);
     }
   };
 
-  useEffect(() => {
-    setLoading(true);
-    fetchCenterAndAppointments();
-  }, [user, activeTab]);
+  if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={AuraColors.primary} /></View>;
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchCenterAndAppointments();
-  };
-
-  // Función para cambiar el estado de la cita (Aprobar / Rechazar / Completar)
-  const handleUpdateStatus = async (appointmentId: string, newStatus: 'confirmed' | 'cancelled' | 'completed', clientName: string) => {
-    let title = 'Actualizar Citas';
-    let msg = `¿Deseas cambiar el estado de la cita de ${clientName}?`;
-
-    if (newStatus === 'confirmed') { title = 'Aprobar Cita'; msg = `¿Estás seguro de que deseas aprobar la cita de ${clientName}?`; }
-    if (newStatus === 'cancelled') { title = 'Rechazar Cita'; msg = `¿Deseas rechazar la reserva de ${clientName}?`; }
-    if (newStatus === 'completed') { title = 'Completar Cita'; msg = `¿Confirmas que el servicio de ${clientName} ya fue realizado?`; }
-
-    Alert.alert(title, msg, [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Confirmar',
-        style: newStatus === 'cancelled' ? 'destructive' : 'default',
-        onPress: async () => {
-          const { error } = await supabase
-            .from('appointments')
-            .update({ status: newStatus })
-            .eq('id', appointmentId);
-
-          if (error) {
-            Alert.alert('Error', 'No se pudo actualizar el estado de la cita.');
-          } else {
-            Alert.alert('Éxito', 'Estado de la cita actualizado.');
-            // Removemos de la lista local para agilizar la UI
-            setAppointments(prev => prev.filter(item => item.id !== appointmentId));
-          }
-        }
-      }
-    ]);
-  };
-
-  const renderAppointmentItem = ({ item }: { item: any }) => {
-    const clientName = item.profiles?.full_name || 'Cliente';
-    const clientPhone = item.profiles?.phone || 'Sin teléfono';
-    const serviceName = item.service?.name || 'Servicio';
-    const price = parseFloat(item.service?.price || '0').toFixed(2);
-
+  // BLOQUEO DE SEGURIDAD
+  if (appointment?.status !== 'approved') {
     return (
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <View style={styles.clientInfo}>
-            <Feather name="user" size={16} color={AuraColors.primary} />
-            <Text style={styles.clientNameText}>{clientName}</Text>
-          </View>
-          <Text style={styles.priceText}>{price} Bs</Text>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.blockedContainer}>
+          <Feather name="lock" size={54} color="#F59E0B" />
+          <Text style={styles.blockedTitle}>Pago no habilitado</Text>
+          <Text style={styles.blockedSubtitle}>Debes esperar a que el centro acepte tu solicitud para validar sus horarios antes de poder pagar la reserva.</Text>
+          <Button title="Volver a mis Citas" onPress={() => router.replace('/(tabs)/appointments')} style={{ width: '100%', marginTop: 20 }} />
         </View>
-
-        <View style={styles.detailsBox}>
-          <Text style={styles.detailItem}><Text style={{ fontWeight: '600' }}>Servicio:</Text> {serviceName}</Text>
-          <Text style={styles.detailItem}><Text style={{ fontWeight: '600' }}>Fecha:</Text> {item.appointment_date}</Text>
-          <Text style={styles.detailItem}><Text style={{ fontWeight: '600' }}>Hora:</Text> {item.start_time.slice(0, 5)}</Text>
-          <Text style={styles.detailItem}><Text style={{ fontWeight: '600' }}>Contacto:</Text> {clientPhone}</Text>
-        </View>
-
-        {/* Acciones interactivas según el estado */}
-        {item.status === 'pending' && (
-          <View style={styles.actionsRow}>
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.rejectButton]}
-              onPress={() => handleUpdateStatus(item.id, 'cancelled', clientName)}
-            >
-              <Feather name="x" size={16} color={AuraColors.destructive} />
-              <Text style={styles.rejectText}>Rechazar</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.approveButton]}
-              onPress={() => handleUpdateStatus(item.id, 'confirmed', clientName)}
-            >
-              <Feather name="check" size={16} color="white" />
-              <Text style={styles.approveText}>Aprobar</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {item.status === 'confirmed' && (
-          <TouchableOpacity 
-            style={[styles.actionButton, styles.completeButton]}
-            onPress={() => handleUpdateStatus(item.id, 'completed', clientName)}
-          >
-            <Feather name="check-circle" size={16} color="white" />
-            <Text style={styles.completeText}>Marcar como Completado</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      </SafeAreaView>
     );
-  };
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Barra superior */}
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Feather name="arrow-left" size={20} color={AuraColors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.topBarTitle}>Control de Citas</Text>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}><Feather name="arrow-left" size={20} color={AuraColors.textPrimary} /></TouchableOpacity>
+        <Text style={styles.headerTitle}>Garantizar Reserva</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Selector de Pestañas (Tabs de Filtrado) */}
-      <View style={styles.tabsContainer}>
-        {(['pending', 'confirmed', 'history'] as FilterTab[]).map(tab => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tabButton, activeTab === tab && styles.tabButtonActive]}
-            onPress={() => setActiveTab(tab)}
-          >
-            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-              {tab === 'pending' ? 'Pendientes' : tab === 'confirmed' ? 'Confirmadas' : 'Historial'}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Listado Principal de Citas */}
-      {loading ? (
-        <View style={styles.centerLoading}>
-          <ActivityIndicator size="large" color={AuraColors.primary} />
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.breakdownCard}>
+          <Text style={styles.sectionTitle}>Desglose de Pago</Text>
+          <Text style={styles.centerName}>{appointment?.center?.name}</Text>
+          <Text style={styles.serviceName}>{appointment?.service?.name}</Text>
+          <View style={styles.divider} />
+          <View style={styles.row}><Text style={styles.labelText}>Costo de Reserva (AURA)</Text><Text style={[styles.valueText, { color: AuraColors.primary, fontWeight: '700' }]}>{reservationFee.toFixed(2)} Bs</Text></View>
+          <View style={styles.row}><Text style={styles.labelText}>Saldo en el Local (Efectivo/QR)</Text><Text style={styles.valueText}>{localBalance.toFixed(2)} Bs</Text></View>
+          <View style={[styles.row, styles.totalRow]}><Text style={styles.totalLabel}>Precio Total del Servicio</Text><Text style={styles.totalValue}>{servicePrice.toFixed(2)} Bs</Text></View>
         </View>
-      ) : (
-        <FlatList
-          data={appointments}
-          keyExtractor={item => item.id}
-          renderItem={renderAppointmentItem}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[AuraColors.primary]} />}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Feather name="calendar" size={64} color={AuraColors.border} />
-              <Text style={styles.emptyTitle}>Sin registros</Text>
-              <Text style={styles.emptySubtitle}>No hay citas en esta categoría en este momento.</Text>
-            </View>
-          }
-        />
-      )}
+
+        <View style={styles.qrSection}>
+          <Text style={styles.qrTitle}>QR Oficial de AURA</Text>
+          <Text style={styles.qrSubtitle}>Transfiere únicamente los <Text style={{ fontWeight: '700' }}>{reservationFee.toFixed(2)} Bs</Text> de la reserva para congelar tu cupo.</Text>
+          <View style={styles.qrContainer}>
+            <Image source={{ uri: 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=AURA_RESERVA_CUENTA' }} style={styles.qrImage} resizeMode="contain" />
+          </View>
+        </View>
+
+        <View style={styles.receiptSection}>
+          <Text style={styles.sectionTitle}>Comprobante de Pago</Text>
+          <Text style={styles.receiptSubtitle}>Sube la captura de pantalla de la transferencia bancaria.</Text>
+          <TouchableOpacity style={styles.uploadButton} onPress={pickReceiptImage}>
+            {receiptImage ? <Image source={{ uri: receiptImage.uri }} style={styles.receiptPreview} /> : <View style={styles.uploadPlaceholder}><Feather name="upload-cloud" size={32} color={AuraColors.primary} /><Text style={styles.uploadText}>Subir comprobante</Text></View>}
+            {receiptImage && <View style={styles.changeImageBadge}><Feather name="refresh-cw" size={16} color="white" /></View>}
+          </TouchableOpacity>
+        </View>
+
+        <Button title="Confirmar Cita" onPress={handleSubmitPayment} loading={isSubmitting} style={{ marginTop: 12, marginBottom: 40 }} />
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: AuraColors.background },
-  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, paddingBottom: 12 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, paddingBottom: 12 },
   backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: AuraColors.card, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: AuraColors.border },
-  topBarTitle: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary },
-  tabsContainer: { flexDirection: 'row', backgroundColor: AuraColors.card, marginHorizontal: 24, marginVertical: 12, padding: 4, borderRadius: 12, borderWidth: 1, borderColor: AuraColors.border },
-  tabButton: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
-  tabButtonActive: { backgroundColor: AuraColors.primary },
-  tabText: { fontSize: 14, fontWeight: '600', color: AuraColors.textSecondary },
-  tabTextActive: { color: 'white' },
-  centerLoading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  listContent: { padding: 24, paddingTop: 12 },
-  card: { backgroundColor: AuraColors.card, borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: AuraColors.border },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  clientInfo: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  clientNameText: { fontSize: 16, fontWeight: '700', color: AuraColors.textPrimary },
-  priceText: { fontSize: 16, fontWeight: '800', color: AuraColors.primary },
-  detailsBox: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 10, gap: 6, marginBottom: 16 },
-  detailItem: { fontSize: 14, color: AuraColors.textSecondary },
-  actionsRow: { flexDirection: 'row', gap: 12 },
-  actionButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 10, gap: 6 },
-  rejectButton: { backgroundColor: '#FDEDED' },
-  rejectText: { color: AuraColors.destructive, fontWeight: '600' },
-  approveButton: { backgroundColor: AuraColors.success },
-  approveText: { color: 'white', fontWeight: '600' },
-  completeButton: { backgroundColor: AuraColors.primary, width: '100%' },
-  completeText: { color: 'white', fontWeight: '600' },
-  emptyContainer: { alignItems: 'center', marginTop: 100, paddingHorizontal: 40 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary, marginTop: 16 },
-  emptySubtitle: { fontSize: 14, color: AuraColors.textSecondary, textAlign: 'center', marginTop: 8 }
+  headerTitle: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary },
+  content: { padding: 24 },
+  breakdownCard: { backgroundColor: AuraColors.card, padding: 20, borderRadius: 16, borderWidth: 1, borderColor: AuraColors.border, marginBottom: 24 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 8 },
+  centerName: { fontSize: 13, color: AuraColors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
+  serviceName: { fontSize: 18, fontWeight: '700', color: AuraColors.primary, marginBottom: 16 },
+  divider: { height: 1, backgroundColor: AuraColors.border, marginBottom: 16 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  labelText: { fontSize: 14, color: AuraColors.textSecondary },
+  valueText: { fontSize: 14, fontWeight: '600', color: AuraColors.textPrimary },
+  totalRow: { marginTop: 8, paddingTop: 16, borderTopWidth: 1, borderTopColor: AuraColors.border, alignItems: 'center' },
+  totalLabel: { fontSize: 16, fontWeight: '700', color: AuraColors.textPrimary },
+  totalValue: { fontSize: 20, fontWeight: '800', color: AuraColors.textPrimary },
+  qrSection: { alignItems: 'center', marginBottom: 32 },
+  qrTitle: { fontSize: 16, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 4 },
+  qrSubtitle: { fontSize: 13, color: AuraColors.textSecondary, textAlign: 'center', paddingHorizontal: 20, marginBottom: 16, lineHeight: 18 },
+  qrContainer: { width: 200, height: 200, backgroundColor: 'white', borderRadius: 16, padding: 8, borderWidth: 1, borderColor: AuraColors.border },
+  qrImage: { width: '100%', height: '100%', borderRadius: 8 },
+  receiptSection: { marginBottom: 24 },
+  receiptSubtitle: { fontSize: 13, color: AuraColors.textSecondary, marginBottom: 16, lineHeight: 20 },
+  uploadButton: { width: '100%', height: 160, backgroundColor: AuraColors.primaryLight, borderRadius: 16, borderWidth: 2, borderColor: AuraColors.primary, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', position: 'relative' },
+  uploadPlaceholder: { alignItems: 'center' },
+  uploadText: { fontSize: 14, fontWeight: '600', color: AuraColors.primary, marginTop: 12 },
+  receiptPreview: { width: '100%', height: '100%' },
+  changeImageBadge: { position: 'absolute', bottom: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 20 },
+  blockedContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32, textAlign: 'center' },
+  blockedTitle: { fontSize: 22, fontWeight: '700', color: AuraColors.textPrimary, marginTop: 16, marginBottom: 8 },
+  blockedSubtitle: { fontSize: 14, color: AuraColors.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: 24 },
 });

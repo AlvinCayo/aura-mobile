@@ -1,78 +1,129 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KpiCard from '../../src/components/ui/KpiCard';
+import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
-export default function AdminDashboardScreen() {
+export default function SuperAdminDashboard() {
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  
+  const [stats, setStats] = useState({
+    totalCenters: 0,
+    pendingApprovals: 0,
+    activeReports: 0,
+    totalAuraRevenue: 0,
+  });
+
+  const fetchGlobalData = async () => {
+    try {
+      // 1. Centros Activos
+      const { count: activeCenters } = await supabase.from('centers').select('*', { count: 'exact', head: true }).eq('status', 'approved');
+      
+      // 2. Solicitudes Pendientes
+      const { count: pendingCenters } = await supabase.from('centers').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+      
+      // 3. Reportes de Fraude Pendientes
+      const { count: pendingReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+      
+      // 4. Ingresos Totales de AURA (Suma de las señas de reserva pagadas)
+      const { data: appointments } = await supabase.from('appointments').select('reservation_fee').in('status', ['confirmed', 'paid', 'completed']);
+      
+      let revenue = 0;
+      if (appointments) {
+        revenue = appointments.reduce((sum, app) => sum + parseFloat(app.reservation_fee || '0'), 0);
+      }
+
+      setStats({
+        totalCenters: activeCenters || 0,
+        pendingApprovals: pendingCenters || 0,
+        activeReports: pendingReports || 0,
+        totalAuraRevenue: revenue,
+      });
+    } catch (error) {
+      console.error('Error cargando datos globales:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => { fetchGlobalData(); }, []);
+
+  const onRefresh = () => { setRefreshing(true); fetchGlobalData(); };
+
+  if (loading) return <View style={styles.centerLoading}><ActivityIndicator size="large" color={AuraColors.primary} /></View>;
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.title}>Dashboard Admin</Text>
-        <Text style={styles.subtitle}>Vista general de la plataforma</Text>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}><Feather name="arrow-left" size={20} color={AuraColors.textPrimary} /></TouchableOpacity>
+        <Text style={styles.headerTitle}>AURA SuperAdmin</Text>
+        <View style={{ width: 40 }} />
+      </View>
 
-        {/* KPIs */}
-        <View style={styles.kpiRow}>
-          <KpiCard icon="users" label="Total Usuarios" value="1,234" trend="+12%" trendUp style={{ flex: 1, marginRight: 10 }} />
-          <KpiCard icon="briefcase" label="Total Centros" value="224" trend="+8%" trendUp style={{ flex: 1 }} />
-        </View>
-        <View style={styles.kpiRow}>
-          <KpiCard icon="calendar" label="Citas Hoy" value="89" trend="-5%" trendUp={false} style={{ flex: 1, marginRight: 10 }} />
-          <KpiCard icon="dollar-sign" label="Ingresos (Mes)" value="$45K" trend="+18%" trendUp style={{ flex: 1 }} />
+      <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[AuraColors.primary]} />}>
+        
+        {/* Gráfico Financiero Simplificado */}
+        <View style={styles.revenueCard}>
+          <Text style={styles.revenueTitle}>Ganancias Históricas AURA</Text>
+          <Text style={styles.revenueValue}>{stats.totalAuraRevenue.toFixed(2)} Bs</Text>
+          <View style={styles.chartContainer}>
+            <View style={styles.chartBar}><View style={[styles.chartFill, { height: '40%' }]} /><Text style={styles.chartLabel}>Lun</Text></View>
+            <View style={styles.chartBar}><View style={[styles.chartFill, { height: '70%' }]} /><Text style={styles.chartLabel}>Mar</Text></View>
+            <View style={styles.chartBar}><View style={[styles.chartFill, { height: '50%' }]} /><Text style={styles.chartLabel}>Mie</Text></View>
+            <View style={styles.chartBar}><View style={[styles.chartFill, { height: '90%' }]} /><Text style={styles.chartLabel}>Jue</Text></View>
+            <View style={styles.chartBar}><View style={[styles.chartFill, { height: '100%' }]} /><Text style={styles.chartLabel}>Vie</Text></View>
+          </View>
         </View>
 
-        {/* Acciones pendientes */}
-        <Text style={styles.sectionTitle}>Acciones Pendientes</Text>
-        {[
-          { label: 'Centros por aprobar', count: 5 },
-          { label: 'Reportes de usuarios', count: 3 },
-          { label: 'Disputas de pago', count: 2 },
-        ].map((action, i) => (
-          <TouchableOpacity key={i} style={styles.actionItem}>
-            <Text style={styles.actionLabel}>{action.label}</Text>
-            <View style={styles.actionBadge}>
-              <Text style={styles.actionBadgeText}>{action.count}</Text>
+        <Text style={styles.sectionTitle}>Métricas Globales</Text>
+        <View style={styles.kpiGrid}>
+          <View style={{ width: '48%' }}><KpiCard title="Centros Activos" value={stats.totalCenters.toString()} icon="briefcase" color="#10B981" /></View>
+          <View style={{ width: '48%' }}><KpiCard title="Reportes" value={stats.activeReports.toString()} icon="flag" color="#EF4444" /></View>
+        </View>
+
+        <Text style={[styles.sectionTitle, { marginTop: 32 }]}>Módulos Operativos</Text>
+        <View style={styles.menuContainer}>
+          
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/admin-platform/approvals')}>
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.iconBox, { backgroundColor: '#FEF3C7' }]}><Feather name="shield" size={24} color="#D97706" /></View>
+              <View>
+                <Text style={styles.menuItemTitle}>Aprobación de Centros</Text>
+                <Text style={styles.menuItemSub}>Revisar licencias y nuevos registros</Text>
+              </View>
             </View>
+            {stats.pendingApprovals > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{stats.pendingApprovals}</Text></View>}
           </TouchableOpacity>
-        ))}
 
-        {/* Actividad reciente */}
-        <Text style={styles.sectionTitle}>Actividad Reciente</Text>
-        {[
-          { action: 'Nuevo centro registrado', detail: 'Centro Wellness Plus', time: 'Hace 2h', icon: 'briefcase' },
-          { action: 'Usuario suspendido', detail: 'Carlos M. - Spam', time: 'Hace 5h', icon: 'alert-triangle' },
-          { action: 'Centro aprobado', detail: 'Spa Relax', time: 'Ayer', icon: 'check-circle' },
-          { action: 'Pago procesado', detail: '$1,234.00', time: 'Ayer', icon: 'credit-card' },
-        ].map((item, i) => (
-          <View key={i} style={styles.activityItem}>
-            <Feather name={item.icon as any} size={18} color={AuraColors.textMuted} />
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.activityAction}>{item.action}</Text>
-              <Text style={styles.activityDetail}>{item.detail}</Text>
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/admin-platform/reports')}>
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.iconBox, { backgroundColor: '#FEE2E2' }]}><Feather name="alert-triangle" size={24} color="#EF4444" /></View>
+              <View>
+                <Text style={styles.menuItemTitle}>Centro de Reportes</Text>
+                <Text style={styles.menuItemSub}>Investigar fraudes y quejas</Text>
+              </View>
             </View>
-            <Text style={styles.activityTime}>{item.time}</Text>
-          </View>
-        ))}
+            {stats.activeReports > 0 && <View style={[styles.badge, { backgroundColor: '#EF4444' }]}><Text style={styles.badgeText}>{stats.activeReports}</Text></View>}
+          </TouchableOpacity>
 
-        {/* Estado de la plataforma */}
-        <Text style={styles.sectionTitle}>Estado de la Plataforma</Text>
-        {[
-          { label: 'API', status: 'online' },
-          { label: 'Pagos', status: 'online' },
-          { label: 'Análisis', status: 'online' },
-        ].map((service, i) => (
-          <View key={i} style={styles.statusRow}>
-            <Text style={styles.statusLabel}>{service.label}</Text>
-            <View style={styles.statusOnline}>
-              <View style={styles.statusDot} />
-              <Text style={styles.statusText}>Online</Text>
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/admin-platform/users')}>
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.iconBox, { backgroundColor: '#E0F2FE' }]}><Feather name="users" size={24} color="#0284C7" /></View>
+              <View>
+                <Text style={styles.menuItemTitle}>Gestión de Usuarios</Text>
+                <Text style={styles.menuItemSub}>Bloquear o suspender cuentas</Text>
+              </View>
             </View>
-          </View>
-        ))}
+            <Feather name="chevron-right" size={20} color={AuraColors.textMuted} />
+          </TouchableOpacity>
+
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -80,62 +131,26 @@ export default function AdminDashboardScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: AuraColors.background },
-  scroll: { padding: 24, paddingBottom: 40 },
-  title: { fontSize: 26, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 4 },
-  subtitle: { fontSize: 14, color: AuraColors.textSecondary, marginBottom: 24 },
-  kpiRow: { flexDirection: 'row', marginBottom: 12 },
-  sectionTitle: { fontSize: 18, fontWeight: '600', color: AuraColors.textPrimary, marginTop: 28, marginBottom: 12 },
-  actionItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 14,
-    backgroundColor: AuraColors.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: AuraColors.border,
-    marginBottom: 8,
-  },
-  actionLabel: { fontSize: 15, color: AuraColors.textPrimary },
-  actionBadge: {
-    backgroundColor: AuraColors.primary,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  actionBadgeText: { color: 'white', fontSize: 13, fontWeight: '600' },
-  activityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    backgroundColor: AuraColors.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: AuraColors.border,
-    marginBottom: 8,
-  },
-  activityAction: { fontSize: 14, fontWeight: '600', color: AuraColors.textPrimary },
-  activityDetail: { fontSize: 13, color: AuraColors.textSecondary },
-  activityTime: { fontSize: 12, color: AuraColors.textMuted },
-  statusRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 14,
-    backgroundColor: AuraColors.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: AuraColors.border,
-    marginBottom: 8,
-  },
-  statusLabel: { fontSize: 15, color: AuraColors.textPrimary },
-  statusOnline: { flexDirection: 'row', alignItems: 'center' },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: AuraColors.success,
-    marginRight: 6,
-  },
-  statusText: { fontSize: 13, color: AuraColors.success },
+  centerLoading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, paddingBottom: 12 },
+  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: AuraColors.card, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: AuraColors.border },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary },
+  content: { padding: 24, paddingBottom: 60 },
+  revenueCard: { backgroundColor: AuraColors.primary, borderRadius: 20, padding: 24, marginBottom: 24, shadowColor: AuraColors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 10 },
+  revenueTitle: { color: 'rgba(255,255,255,0.8)', fontSize: 14, fontWeight: '600' },
+  revenueValue: { color: 'white', fontSize: 32, fontWeight: '800', marginTop: 4, marginBottom: 20 },
+  chartContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 100, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.2)' },
+  chartBar: { alignItems: 'center', height: '100%', justifyContent: 'flex-end', width: '15%' },
+  chartFill: { width: '100%', backgroundColor: 'white', borderRadius: 6 },
+  chartLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 8 },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 16 },
+  kpiGrid: { flexDirection: 'row', justifyContent: 'space-between' },
+  menuContainer: { gap: 12 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: AuraColors.card, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: AuraColors.border },
+  menuItemLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  iconBox: { width: 48, height: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  menuItemTitle: { fontSize: 16, fontWeight: '600', color: AuraColors.textPrimary },
+  menuItemSub: { fontSize: 13, color: AuraColors.textSecondary, marginTop: 2 },
+  badge: { backgroundColor: '#F59E0B', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  badgeText: { color: 'white', fontSize: 12, fontWeight: '700' },
 });
