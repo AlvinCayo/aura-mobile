@@ -1,95 +1,155 @@
 import { Feather } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { supabase } from '../src/lib/supabase';
 import { AuraColors } from '../src/theme/colors';
 
-const NEARBY_CENTERS = [
-  { id: '1', name: 'Aura Beauty Center', distance: '1.2 km', lat: 40.4168, lon: -3.7038 },
-  { id: '2', name: 'Zen Spa & Wellness', distance: '2.5 km', lat: 40.4200, lon: -3.7050 },
-];
+const { width } = Dimensions.get('window');
 
 export default function MapScreen() {
   const router = useRouter();
+  const [centers, setCenters] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedCenter, setSelectedCenter] = useState<any | null>(null);
+  const [region, setRegion] = useState({
+    // Coordenadas base por defecto: La Paz, Bolivia
+    latitude: -16.4897,
+    longitude: -68.1193,
+    latitudeDelta: 0.05,
+    longitudeDelta: 0.05,
+  });
+
+  useEffect(() => {
+    (async () => {
+      // 1. Obtener ubicación del usuario para centrar el mapa
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        let location = await Location.getCurrentPositionAsync({});
+        setRegion(prev => ({
+          ...prev,
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        }));
+      }
+
+      // 2. Traer los centros de Supabase que tengan coordenadas
+      const { data, error } = await supabase
+        .from('centers')
+        .select('*')
+        .eq('status', 'approved')
+        .not('latitude', 'is', null)
+        .not('longitude', 'is', null);
+
+      if (!error && data) {
+        setCenters(data);
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={AuraColors.primary} />
+        <Text style={{ marginTop: 12, color: AuraColors.textSecondary }}>Cargando mapa...</Text>
+      </View>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Feather name="arrow-left" size={20} color={AuraColors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.title}>Cerca de ti</Text>
-        <View style={{ width: 40 }} />
-      </View>
-
-      {/* Placeholder del mapa */}
-      <View style={styles.mapPlaceholder}>
-        <Feather name="map" size={48} color={AuraColors.textMuted} />
-        <Text style={styles.placeholderText}>Mapa de centros cercanos</Text>
-        <Text style={styles.hint}>Integra react-native-maps aquí</Text>
-      </View>
-
-      {/* Lista debajo del mapa */}
-      <View style={styles.listContainer}>
-        <Text style={styles.listTitle}>Centros cercanos</Text>
-        {NEARBY_CENTERS.map((center) => (
-          <TouchableOpacity
+    <View style={styles.container}>
+      {/* MAPA NATIVO */}
+      <MapView 
+        style={styles.map} 
+        initialRegion={region}
+        showsUserLocation={true}
+        showsMyLocationButton={true}
+      >
+        {centers.map((center) => (
+          <Marker
             key={center.id}
-            style={styles.centerRow}
-            onPress={() => router.push(`/center/${center.id}` as any)}
+            coordinate={{ latitude: parseFloat(center.latitude), longitude: parseFloat(center.longitude) }}
+            onPress={() => setSelectedCenter(center)}
           >
-            <Feather name="map-pin" size={16} color={AuraColors.primary} />
-            <Text style={styles.centerName}>{center.name}</Text>
-            <Text style={styles.distance}>{center.distance}</Text>
-            <Feather name="chevron-right" size={16} color={AuraColors.textMuted} />
-          </TouchableOpacity>
+            <View style={styles.markerContainer}>
+              <View style={styles.markerCircle}>
+                <Feather name="scissors" size={16} color="white" />
+              </View>
+              <View style={styles.markerTriangle} />
+            </View>
+          </Marker>
         ))}
-      </View>
-    </SafeAreaView>
+      </MapView>
+
+      {/* BOTÓN DE RETROCESO FLOTANTE */}
+      <SafeAreaView style={styles.headerAbsolute} edges={['top']}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <Feather name="arrow-left" size={24} color={AuraColors.textPrimary} />
+        </TouchableOpacity>
+      </SafeAreaView>
+
+      {/* TARJETA FLOTANTE (Aparece cuando tocas un pin) */}
+      {selectedCenter && (
+        <View style={styles.bottomCardContainer}>
+          <TouchableOpacity 
+            style={styles.centerCard} 
+            activeOpacity={0.9} 
+            onPress={() => router.push(`/center/${selectedCenter.id}`)}
+          >
+            <TouchableOpacity style={styles.closeCardBtn} onPress={() => setSelectedCenter(null)}>
+              <Feather name="x" size={20} color={AuraColors.textMuted} />
+            </TouchableOpacity>
+            
+            <Image 
+              source={{ uri: selectedCenter.image_url || 'https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=600&auto=format&fit=crop' }} 
+              style={styles.cardImage} 
+            />
+            <View style={styles.cardInfo}>
+              <Text style={styles.cardTitle} numberOfLines={1}>{selectedCenter.name}</Text>
+              <Text style={styles.cardAddress} numberOfLines={2}>
+                <Feather name="map-pin" size={12} /> {selectedCenter.address}
+              </Text>
+              <View style={styles.cardActionRow}>
+                <View style={styles.ratingBadge}>
+                  <Feather name="star" size={12} color="#F59E0B" fill="#F59E0B" />
+                  <Text style={styles.ratingText}>{(selectedCenter.rating || 4.5).toFixed(1)}</Text>
+                </View>
+                <Text style={styles.bookText}>Agendar Cita <Feather name="arrow-right" size={14} /></Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: AuraColors.background },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 24,
-    paddingBottom: 16,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: AuraColors.card,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: AuraColors.border,
-  },
-  title: { fontSize: 20, fontWeight: '700', color: AuraColors.textPrimary },
-  mapPlaceholder: {
-    flex: 1,
-    backgroundColor: AuraColors.border,
-    margin: 24,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholderText: { fontSize: 18, color: AuraColors.textSecondary, marginTop: 12 },
-  hint: { fontSize: 13, color: AuraColors.textMuted, marginTop: 4 },
-  listContainer: { paddingHorizontal: 24, paddingBottom: 32 },
-  listTitle: { fontSize: 16, fontWeight: '600', color: AuraColors.textPrimary, marginBottom: 12 },
-  centerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: AuraColors.border,
-    gap: 8,
-  },
-  centerName: { flex: 1, fontSize: 15, color: AuraColors.textPrimary },
-  distance: { fontSize: 14, color: AuraColors.primary },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  map: { width: '100%', height: '100%' },
+  headerAbsolute: { position: 'absolute', top: 0, left: 24, zIndex: 10 },
+  backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 5, marginTop: 16 },
+  
+  // Diseño del Pin personalizado en el mapa
+  markerContainer: { alignItems: 'center', justifyContent: 'center' },
+  markerCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: AuraColors.primary, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3, elevation: 4 },
+  markerTriangle: { width: 0, height: 0, backgroundColor: 'transparent', borderStyle: 'solid', borderLeftWidth: 6, borderRightWidth: 6, borderBottomWidth: 10, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: AuraColors.primary, transform: [{ rotate: '180deg' }], marginTop: -2 },
+
+  // Tarjeta interactiva
+  bottomCardContainer: { position: 'absolute', bottom: 40, left: 0, right: 0, alignItems: 'center' },
+  centerCard: { width: width * 0.9, backgroundColor: 'white', borderRadius: 20, flexDirection: 'row', padding: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
+  closeCardBtn: { position: 'absolute', top: 8, right: 8, zIndex: 5, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 12, padding: 4 },
+  cardImage: { width: 80, height: 80, borderRadius: 12 },
+  cardInfo: { flex: 1, marginLeft: 16, justifyContent: 'center' },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 4, paddingRight: 20 },
+  cardAddress: { fontSize: 13, color: AuraColors.textSecondary, marginBottom: 8, lineHeight: 18 },
+  cardActionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  ratingBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
+  ratingText: { fontSize: 12, fontWeight: '700', color: '#D97706' },
+  bookText: { color: AuraColors.primary, fontWeight: '700', fontSize: 14 },
 });
