@@ -18,7 +18,6 @@ import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
-// Generador de los próximos 14 días para el carrusel
 const generateNextDays = (days: number) => {
   const dates = [];
   const today = new Date();
@@ -34,16 +33,6 @@ const generateNextDays = (days: number) => {
   return dates;
 };
 
-// Horarios de ejemplo para el TimeSlotPicker
-const AVAILABLE_SLOTS = [
-  { id: '09:00:00', time: '09:00 AM', available: true },
-  { id: '10:00:00', time: '10:00 AM', available: true },
-  { id: '11:30:00', time: '11:30 AM', available: false }, // Simula ocupado
-  { id: '14:00:00', time: '02:00 PM', available: true },
-  { id: '15:30:00', time: '03:30 PM', available: true },
-  { id: '17:00:00', time: '05:00 PM', available: true },
-];
-
 export default function BookingScreen() {
   const { centerId } = useLocalSearchParams<{ centerId: string }>();
   const router = useRouter();
@@ -54,20 +43,21 @@ export default function BookingScreen() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Estados de selección del usuario
   const availableDates = generateNextDays(14);
   const [selectedDate, setSelectedDate] = useState(availableDates[0].dateString);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [selectedService, setSelectedService] = useState<any>(null);
+  
+  // Horarios generados dinámicamente según el día y el centro
+  const [dynamicSlots, setDynamicSlots] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchCenterAndServices = async () => {
       if (!centerId) return;
-
       try {
         const { data: centerData } = await supabase
           .from('centers')
-          .select('name, address, rating')
+          .select('name, address, rating, schedule')
           .eq('id', centerId)
           .single();
         if (centerData) setCenter(centerData);
@@ -83,9 +73,65 @@ export default function BookingScreen() {
         setLoading(false);
       }
     };
-
     fetchCenterAndServices();
   }, [centerId]);
+
+  // Generador inteligente de horarios
+  useEffect(() => {
+    if (!center || !center.schedule) return;
+
+    const generateSlotsForDay = async () => {
+      // 1. Identificar qué día de la semana es (0 = Domingo, 1 = Lunes)
+      // Forzamos la zona horaria añadiendo T00:00:00 para evitar desfasajes locales
+      const dayOfWeek = new Date(selectedDate + 'T00:00:00').getDay();
+      const daysMap = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+      const dayName = daysMap[dayOfWeek];
+      const daySchedule = center.schedule[dayName];
+
+      if (!daySchedule || !daySchedule.active) {
+        setDynamicSlots([]); // Cerrado ese día
+        return;
+      }
+
+      // 2. Traer las citas que ya están reservadas para ese día en el centro
+      const { data: bookedAppointments } = await supabase
+        .from('appointments')
+        .select('start_time')
+        .eq('center_id', centerId)
+        .eq('appointment_date', selectedDate)
+        .in('status', ['pending', 'approved', 'paid', 'confirmed']);
+      
+      const bookedTimes = bookedAppointments ? bookedAppointments.map(a => a.start_time) : [];
+
+      // 3. Generar la lista de horas
+      let slots = [];
+      let current = new Date(`${selectedDate}T${daySchedule.open}:00`);
+      const closeTime = new Date(`${selectedDate}T${daySchedule.close}:00`);
+      const now = new Date();
+      // REGLA: 1 Hora mínima de anticipación
+      const oneHourFromNow = new Date(now.getTime() + 60 * 60000);
+
+      while (current < closeTime) {
+        const timeString = current.toTimeString().split(' ')[0]; // HH:mm:ss
+        
+        // Verificamos si la hora ya pasó (o es muy pronto) y si ya está reservada
+        const isTooSoon = current <= oneHourFromNow;
+        const isBooked = bookedTimes.includes(timeString);
+
+        slots.push({
+          id: timeString,
+          time: current.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+          available: !isTooSoon && !isBooked,
+        });
+
+        current = new Date(current.getTime() + 30 * 60000); // Bloques de 30 min
+      }
+      setDynamicSlots(slots);
+    };
+
+    generateSlotsForDay();
+    setSelectedTime(null); // Resetear tiempo al cambiar de día
+  }, [selectedDate, center]);
 
   const handleConfirmBooking = async () => {
     if (!selectedService) return Alert.alert('Aviso', 'Por favor, selecciona un servicio.');
@@ -95,17 +141,22 @@ export default function BookingScreen() {
     setIsSubmitting(true);
 
     try {
+      // CORRECCIÓN: Calcular el end_time sumándole la duración al start_time
+      const startDateTime = new Date(`${selectedDate}T${selectedTime}`);
+      const endDateTime = new Date(startDateTime.getTime() + selectedService.duration_min * 60000);
+      const end_time = endDateTime.toTimeString().split(' ')[0]; // Retorna HH:mm:ss
+
       const { error } = await supabase.from('appointments').insert({
         client_id: user.id,
         center_id: centerId,
         service_id: selectedService.id,
         appointment_date: selectedDate,
         start_time: selectedTime,
+        end_time: end_time, // ¡Soluciona el error null_constraint!
         status: 'pending',
       });
 
       if (error) throw error;
-
       router.replace('/booking/confirmation');
 
     } catch (error: any) {
@@ -118,10 +169,7 @@ export default function BookingScreen() {
   const renderServiceCard = ({ item }: { item: any }) => {
     const isSelected = selectedService?.id === item.id;
     return (
-      <TouchableOpacity
-        style={[styles.serviceCard, isSelected && styles.serviceCardSelected]}
-        onPress={() => setSelectedService(item)}
-      >
+      <TouchableOpacity style={[styles.serviceCard, isSelected && styles.serviceCardSelected]} onPress={() => setSelectedService(item)}>
         <View style={styles.serviceInfo}>
           <Text style={[styles.serviceName, isSelected && { color: AuraColors.primary }]}>{item.name}</Text>
           <Text style={styles.serviceDuration}>{item.duration_min} min</Text>
@@ -134,35 +182,26 @@ export default function BookingScreen() {
   const renderDateItem = ({ item }: { item: any }) => {
     const isSelected = selectedDate === item.dateString;
     return (
-      <TouchableOpacity
-        style={[styles.dateCard, isSelected && styles.dateCardSelected]}
-        onPress={() => { setSelectedDate(item.dateString); setSelectedTime(null); }}
-      >
+      <TouchableOpacity style={[styles.dateCard, isSelected && styles.dateCardSelected]} onPress={() => setSelectedDate(item.dateString)}>
         <Text style={[styles.dateDayName, isSelected && { color: 'white' }]}>{item.dayName}</Text>
         <Text style={[styles.dateDayNumber, isSelected && { color: 'white' }]}>{item.dayNumber}</Text>
       </TouchableOpacity>
     );
   };
 
-  if (loading) {
-    return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={AuraColors.primary} /></View>;
-  }
+  if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={AuraColors.primary} /></View>;
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Feather name="arrow-left" size={20} color={AuraColors.textPrimary} />
-        </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}><Feather name="arrow-left" size={20} color={AuraColors.textPrimary} /></TouchableOpacity>
         <Text style={styles.headerTitle}>Agendar Cita</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.centerSummary}>
-          <View style={styles.iconContainer}>
-            <Feather name="briefcase" size={24} color={AuraColors.primary} />
-          </View>
+          <View style={styles.iconContainer}><Feather name="briefcase" size={24} color={AuraColors.primary} /></View>
           <View>
             <Text style={styles.centerName}>{center?.name || 'Centro Estético'}</Text>
             <Text style={styles.centerAddress}>{center?.address || 'Ubicación'}</Text>
@@ -173,60 +212,28 @@ export default function BookingScreen() {
         {services.length === 0 ? (
           <Text style={styles.emptyText}>Este centro aún no tiene servicios registrados.</Text>
         ) : (
-          <FlatList
-            data={services}
-            keyExtractor={(item) => item.id}
-            renderItem={renderServiceCard}
-            scrollEnabled={false}
-          />
+          <FlatList data={services} keyExtractor={(item) => item.id} renderItem={renderServiceCard} scrollEnabled={false} />
         )}
 
         <Text style={styles.sectionTitle}>2. Selecciona una Fecha</Text>
-        <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={availableDates}
-          keyExtractor={(item) => item.dateString}
-          renderItem={renderDateItem}
-          contentContainerStyle={{ gap: 12, paddingVertical: 8 }}
-        />
+        <FlatList horizontal showsHorizontalScrollIndicator={false} data={availableDates} keyExtractor={(item) => item.dateString} renderItem={renderDateItem} contentContainerStyle={{ gap: 12, paddingVertical: 8 }} />
 
         <Text style={styles.sectionTitle}>3. Horarios Disponibles</Text>
-        {/* AQUÍ ESTÁ LA CORRECCIÓN CLAVE: Enviando los props que pide tu componente */}
-        <TimeSlotPicker 
-          slots={AVAILABLE_SLOTS} 
-          selectedSlot={selectedTime} 
-          onSelectSlot={setSelectedTime} 
-        />
+        {dynamicSlots.length === 0 ? (
+          <Text style={styles.emptyText}>El establecimiento está cerrado en este día o ya no hay turnos disponibles.</Text>
+        ) : (
+          <TimeSlotPicker slots={dynamicSlots} selectedSlot={selectedTime} onSelectSlot={setSelectedTime} />
+        )}
 
         <View style={styles.summaryBox}>
           <Text style={styles.summaryTitle}>Resumen de la Cita</Text>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Servicio:</Text>
-            <Text style={styles.summaryValue}>{selectedService?.name || '---'}</Text>
-          </View>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Fecha:</Text>
-            <Text style={styles.summaryValue}>{selectedDate}</Text>
-          </View>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Hora:</Text>
-            <Text style={styles.summaryValue}>
-              {selectedTime ? AVAILABLE_SLOTS.find(s => s.id === selectedTime)?.time : '---'}
-            </Text>
-          </View>
-          <View style={[styles.summaryRow, styles.summaryTotal]}>
-            <Text style={styles.totalLabel}>Total a Pagar (Aprox):</Text>
-            <Text style={styles.totalValue}>Bs {selectedService ? (selectedService.price * 1.10).toFixed(2) : '0.00'}</Text>
-          </View>
+          <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Servicio:</Text><Text style={styles.summaryValue}>{selectedService?.name || '---'}</Text></View>
+          <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Fecha:</Text><Text style={styles.summaryValue}>{selectedDate}</Text></View>
+          <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Hora:</Text><Text style={styles.summaryValue}>{selectedTime ? dynamicSlots.find(s => s.id === selectedTime)?.time : '---'}</Text></View>
+          <View style={[styles.summaryRow, styles.summaryTotal]}><Text style={styles.totalLabel}>Total a Pagar (Aprox):</Text><Text style={styles.totalValue}>Bs {selectedService ? (selectedService.price * 1.10).toFixed(2) : '0.00'}</Text></View>
         </View>
 
-        <Button
-          title="Confirmar Reserva"
-          onPress={handleConfirmBooking}
-          loading={isSubmitting}
-          style={{ marginTop: 24 }}
-        />
+        <Button title="Confirmar Reserva" onPress={handleConfirmBooking} loading={isSubmitting} style={{ marginTop: 24 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -244,7 +251,7 @@ const styles = StyleSheet.create({
   centerName: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary },
   centerAddress: { fontSize: 13, color: AuraColors.textSecondary, marginTop: 4 },
   sectionTitle: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 16, marginTop: 16 },
-  emptyText: { color: AuraColors.textMuted, fontStyle: 'italic', marginBottom: 16 },
+  emptyText: { color: '#D97706', fontStyle: 'italic', marginBottom: 16, backgroundColor: '#FEF3C7', padding: 12, borderRadius: 8 },
   serviceCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: AuraColors.card, borderRadius: 12, borderWidth: 1, borderColor: AuraColors.border, marginBottom: 12 },
   serviceCardSelected: { borderColor: AuraColors.primary, backgroundColor: AuraColors.primaryLight },
   serviceInfo: { flex: 1 },

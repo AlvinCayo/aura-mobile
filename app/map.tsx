@@ -16,6 +16,9 @@ export default function MapScreen() {
   const [loading, setLoading] = useState(true);
   const [selectedCenter, setSelectedCenter] = useState<any | null>(null);
   
+  // NUEVO: Estado para controlar el permiso y evitar el cierre de la app
+  const [hasLocationPermission, setHasLocationPermission] = useState(false);
+  
   // Coordenadas por defecto (Centro de La Paz, Bolivia)
   const [region, setRegion] = useState({
     latitude: -16.4958,
@@ -41,7 +44,7 @@ export default function MapScreen() {
       } catch (error) {
         console.error('Error cargando centros en el mapa:', error);
       } finally {
-        setLoading(false); // Siempre quitamos el loading al terminar de buscar en Supabase
+        setLoading(false);
       }
     };
 
@@ -50,7 +53,8 @@ export default function MapScreen() {
       try {
         let { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted') {
-          // Usamos accuracy "Balanced" para que sea más rápido y no se cuelgue
+          // Si el usuario da permiso, autorizamos al mapa a mostrar el Punto Azul
+          setHasLocationPermission(true); 
           let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
           setRegion(prev => ({
             ...prev,
@@ -63,7 +67,6 @@ export default function MapScreen() {
       }
     };
 
-    // Ejecutamos ambas de forma independiente
     fetchCenters();
     getUserLocation();
   }, []);
@@ -79,15 +82,14 @@ export default function MapScreen() {
 
   return (
     <View style={styles.container}>
-      {/* MAPA NATIVO */}
+      {/* MAPA NATIVO BLINDADO CONTRA CRASHES */}
       <MapView 
         style={styles.map} 
-        region={region} // Usamos region en lugar de initialRegion para que se actualice si el GPS llega tarde
-        showsUserLocation={true}
-        showsMyLocationButton={true}
+        region={region} 
+        showsUserLocation={hasLocationPermission} // CORRECCIÓN: Solo muestra la ubicación si hay permiso
+        showsMyLocationButton={hasLocationPermission} // CORRECCIÓN: Evita botones del sistema sin permiso
       >
         {centers.map((center) => {
-          // Doble validación para asegurar que las coordenadas existan y sean válidas
           const lat = parseFloat(center.latitude);
           const lon = parseFloat(center.longitude);
           if (isNaN(lat) || isNaN(lon)) return null;
