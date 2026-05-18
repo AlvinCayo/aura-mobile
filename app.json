@@ -21,7 +21,12 @@
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#1E293B"
       },
-      "package": "com.alvincayo.aura"
+      "package": "com.alvincayo.aura",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyDcospLptTsk0pwZ8pTIQjuLCIN8nqZdiY"
+        }
+      }
     },
     "web": {
       "output": "static",

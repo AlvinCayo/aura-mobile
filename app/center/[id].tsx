@@ -8,6 +8,7 @@ import {
   Image,
   Linking,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -19,6 +20,7 @@ import Button from '../../src/components/ui/Button';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
+
 
 type TabType = 'services' | 'info' | 'reviews';
 
@@ -33,14 +35,18 @@ export default function CenterProfileScreen() {
   const [reviews, setReviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // NUEVO: Estado para abrir el modal de detalles
   const [selectedServiceDetail, setSelectedServiceDetail] = useState<any>(null);
 
   useEffect(() => {
     const fetchCenterData = async () => {
       if (!id) return;
       try {
-        const { data: centerData, error: centerError } = await supabase.from('centers').select('*').eq('id', id).single();
+        // Obtenemos los datos del centro, incluyendo la galería de imágenes
+        const { data: centerData, error: centerError } = await supabase
+          .from('centers')
+          .select('*, gallery_urls')
+          .eq('id', id)
+          .single();
         if (centerError) throw centerError;
         setCenter(centerData);
 
@@ -80,7 +86,6 @@ export default function CenterProfileScreen() {
   };
 
   const renderServiceItem = ({ item }: { item: any }) => (
-    // CORRECCIÓN: Ahora es tocable y abre el modal de detalles
     <TouchableOpacity style={styles.serviceCard} onPress={() => setSelectedServiceDetail(item)}>
       <View style={styles.serviceMain}>
         {item.image_url ? (
@@ -115,6 +120,22 @@ export default function CenterProfileScreen() {
       </View>
     );
   };
+
+  const handleOpenRoute = (lat: number, lng: number, centerName: string) => {
+  const scheme = Platform.select({ ios: 'maps:0,0?q=', android: 'geo:0,0?q=' });
+  const latLng = `${lat},${lng}`;
+  const label = encodeURIComponent(centerName);
+  const url = Platform.select({
+    ios: `${scheme}${label}@${latLng}`,
+    android: `${scheme}${latLng}(${label})`
+  });
+
+  if (url) {
+    Linking.openURL(url).catch(() => 
+      Alert.alert('Error', 'No se pudo abrir la aplicación de mapas.')
+    );
+  }
+};
 
   if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={AuraColors.primary} /></View>;
 
@@ -162,7 +183,20 @@ export default function CenterProfileScreen() {
           
           {activeTab === 'info' && (
             <View style={styles.aboutBox}>
-              <Text style={styles.aboutDescription}>{center?.description}</Text>
+              <Text style={styles.aboutDescription}>{center?.description || 'Sin descripción disponible.'}</Text>
+              
+              {/* NUEVA SECCIÓN: Galería de Instalaciones */}
+              {center?.gallery_urls && center.gallery_urls.length > 0 && (
+                <View style={styles.gallerySection}>
+                  <Text style={styles.sectionTitle}>Nuestras Instalaciones</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+                    {center.gallery_urls.map((url: string, index: number) => (
+                      <Image key={index} source={{ uri: url }} style={styles.galleryImageItem} />
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
               <View style={styles.locationDetailRow}>
                 <Feather name="map-pin" size={16} color={AuraColors.primary} style={{ marginTop: 2 }} />
                 <View style={{ flex: 1 }}><Text style={styles.locationTitle}>Dirección Exacta</Text><Text style={styles.locationBody}>{center?.address}</Text></View>
@@ -179,7 +213,7 @@ export default function CenterProfileScreen() {
         <Button title="Agendar una Cita" onPress={() => router.push(`/booking/${id}` as any)} icon={<Feather name="calendar" size={18} color="white" />} />
       </View>
 
-      {/* NUEVO MODAL DE DETALLES AMPLIADOS DEL SERVICIO */}
+      {/* MODAL DE DETALLES AMPLIADOS DEL SERVICIO */}
       <Modal visible={!!selectedServiceDetail} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.serviceModalContent}>
@@ -255,13 +289,18 @@ const styles = StyleSheet.create({
   serviceName: { fontSize: 15, fontWeight: '600', color: AuraColors.textPrimary },
   serviceDuration: { fontSize: 12, color: AuraColors.textMuted },
   servicePrice: { fontSize: 15, fontWeight: '700', color: AuraColors.primary, marginLeft: 8 },
+  
   aboutBox: { gap: 20 },
   aboutDescription: { fontSize: 15, color: AuraColors.textSecondary, lineHeight: 22 },
+  gallerySection: { marginVertical: 8 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 12 },
+  galleryImageItem: { width: 140, height: 100, borderRadius: 12, borderWidth: 1, borderColor: AuraColors.border },
   locationDetailRow: { flexDirection: 'row', gap: 12, backgroundColor: '#F8FAFC', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: AuraColors.border },
   locationTitle: { fontSize: 14, fontWeight: '700', color: AuraColors.textPrimary },
   locationBody: { fontSize: 13, color: AuraColors.textSecondary, marginTop: 4, lineHeight: 18 },
   whatsappButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#16A34A', backgroundColor: '#E0FDEE' },
   whatsappButtonText: { color: '#16A34A', fontWeight: '600', fontSize: 14 },
+  
   reviewCard: { backgroundColor: AuraColors.card, borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: AuraColors.border },
   reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   reviewUser: { flexDirection: 'row', alignItems: 'center', gap: 8 },

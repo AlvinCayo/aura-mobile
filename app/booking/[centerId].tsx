@@ -74,11 +74,24 @@ export default function BookingScreen() {
     setIsSubmitting(true);
 
     try {
-      // DOBLE SEGURO: Verificamos/creamos perfil para evitar foreign key constraint error
+      // DOBLE SEGURO: Verificamos/creamos perfil
       const { data: profileCheck } = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle();
       if (!profileCheck) {
         await supabase.from('profiles').insert([{ id: user.id, email: user.email, role: 'client', full_name: user.user_metadata?.full_name || 'Usuario' }]);
       }
+
+      // CORRECCIÓN: Cálculo de end_time exacto
+      const duration = selectedService.duration_min;
+      const startTimeParts = selectedTime.split(':'); // '09:00:00' -> ['09', '00', '00']
+      
+      const startDate = new Date();
+      startDate.setHours(parseInt(startTimeParts[0], 10));
+      startDate.setMinutes(parseInt(startTimeParts[1], 10));
+      startDate.setSeconds(0);
+      
+      const endDate = new Date(startDate.getTime() + duration * 60000); // Sumamos los minutos
+      
+      const endTimeString = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}:00`;
 
       const { error } = await supabase.from('appointments').insert({
         client_id: user.id,
@@ -86,12 +99,14 @@ export default function BookingScreen() {
         service_id: selectedService.id,
         appointment_date: selectedDate,
         start_time: selectedTime,
+        end_time: endTimeString, // <--- Aquí pasamos el valor que exige la restricción
         status: 'pending',
       });
 
       if (error) throw error;
       router.replace('/booking/confirmation');
     } catch (error: any) {
+      console.error("Booking error:", error);
       Alert.alert('Error al reservar', error.message || 'No se pudo completar la reserva.');
     } finally {
       setIsSubmitting(false);

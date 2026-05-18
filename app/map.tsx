@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../src/lib/supabase';
@@ -16,9 +16,6 @@ export default function MapScreen() {
   const [loading, setLoading] = useState(true);
   const [selectedCenter, setSelectedCenter] = useState<any | null>(null);
   
-  // NUEVO: Estado para controlar el permiso y evitar el cierre de la app
-  const [hasLocationPermission, setHasLocationPermission] = useState(false);
-  
   // Coordenadas por defecto (Centro de La Paz, Bolivia)
   const [region, setRegion] = useState({
     latitude: -16.4958,
@@ -28,7 +25,6 @@ export default function MapScreen() {
   });
 
   useEffect(() => {
-    // Función 1: Traer los centros SIEMPRE, sin importar el GPS
     const fetchCenters = async () => {
       try {
         const { data, error } = await supabase
@@ -47,47 +43,47 @@ export default function MapScreen() {
         setLoading(false);
       }
     };
-
-    // Función 2: Intentar obtener el GPS del usuario sin bloquear la app
-    const getUserLocation = async () => {
-      try {
-        let { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
-          // Si el usuario da permiso, autorizamos al mapa a mostrar el Punto Azul
-          setHasLocationPermission(true); 
-          let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-          setRegion(prev => ({
-            ...prev,
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-          }));
-        }
-      } catch (error) {
-        console.log('No se pudo obtener la ubicación rápida del usuario, usando La Paz por defecto.');
-      }
-    };
-
     fetchCenters();
-    getUserLocation();
   }, []);
+
+  // Función manual para evitar que la aplicación se cierre de golpe al iniciar
+  const handleLocateMe = async () => {
+    try {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permiso denegado', 'No podemos acceder a tu GPS.');
+        return;
+      }
+      
+      let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setRegion({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      });
+    } catch (error) {
+      Alert.alert('Error', 'Asegúrate de que tu GPS esté encendido.');
+    }
+  };
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={AuraColors.primary} />
-        <Text style={{ marginTop: 12, color: AuraColors.textSecondary, fontWeight: '600' }}>Cargando centros cercanos...</Text>
+        <Text style={{ marginTop: 12, color: AuraColors.textSecondary, fontWeight: '600' }}>Cargando mapa de AURA...</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* MAPA NATIVO BLINDADO CONTRA CRASHES */}
+      {/* MAPA NATIVO BLINDADO: showsUserLocation eliminado para evitar crashes en Android */}
       <MapView 
         style={styles.map} 
         region={region} 
-        showsUserLocation={hasLocationPermission} // CORRECCIÓN: Solo muestra la ubicación si hay permiso
-        showsMyLocationButton={hasLocationPermission} // CORRECCIÓN: Evita botones del sistema sin permiso
+        showsUserLocation={false} 
+        showsMyLocationButton={false}
       >
         {centers.map((center) => {
           const lat = parseFloat(center.latitude);
@@ -111,12 +107,16 @@ export default function MapScreen() {
         })}
       </MapView>
 
-      {/* BOTÓN DE RETROCESO FLOTANTE */}
       <SafeAreaView style={styles.headerAbsolute} edges={['top']}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Feather name="arrow-left" size={24} color={AuraColors.textPrimary} />
         </TouchableOpacity>
       </SafeAreaView>
+
+      {/* BOTÓN FLOTANTE PARA UBICAR AL USUARIO MANUALMENTE */}
+      <TouchableOpacity style={styles.locateButton} onPress={handleLocateMe}>
+        <Feather name="navigation" size={24} color={AuraColors.primary} />
+      </TouchableOpacity>
 
       {/* TARJETA FLOTANTE AL TOCAR UN PIN */}
       {selectedCenter && (
@@ -124,7 +124,7 @@ export default function MapScreen() {
           <TouchableOpacity 
             style={styles.centerCard} 
             activeOpacity={0.9} 
-            onPress={() => router.push(`/center/${selectedCenter.id}`)}
+            onPress={() => router.push(`/center/${selectedCenter.id}` as any)}
           >
             <TouchableOpacity style={styles.closeCardBtn} onPress={() => setSelectedCenter(null)}>
               <Feather name="x" size={20} color={AuraColors.textMuted} />
@@ -144,7 +144,7 @@ export default function MapScreen() {
                   <Feather name="star" size={12} color="#F59E0B" fill="#F59E0B" />
                   <Text style={styles.ratingText}>{(selectedCenter.rating || 4.5).toFixed(1)}</Text>
                 </View>
-                <Text style={styles.bookText}>Agendar Cita <Feather name="arrow-right" size={14} /></Text>
+                <Text style={styles.bookText}>Ver Centro <Feather name="arrow-right" size={14} /></Text>
               </View>
             </View>
           </TouchableOpacity>
@@ -160,6 +160,7 @@ const styles = StyleSheet.create({
   map: { width: '100%', height: '100%' },
   headerAbsolute: { position: 'absolute', top: 0, left: 24, zIndex: 10 },
   backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 5, marginTop: 16 },
+  locateButton: { position: 'absolute', top: 60, right: 24, zIndex: 10, width: 50, height: 50, borderRadius: 25, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 5 },
   markerContainer: { alignItems: 'center', justifyContent: 'center' },
   markerCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: AuraColors.primary, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3, elevation: 4 },
   markerTriangle: { width: 0, height: 0, backgroundColor: 'transparent', borderStyle: 'solid', borderLeftWidth: 6, borderRightWidth: 6, borderBottomWidth: 10, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: AuraColors.primary, transform: [{ rotate: '180deg' }], marginTop: -2 },
