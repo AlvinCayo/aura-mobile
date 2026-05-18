@@ -40,16 +40,14 @@ export default function EditProfileScreen() {
           .from('profiles')
           .select('full_name, phone, avatar_url')
           .eq('id', user.id)
-          .single();
+          .maybeSingle(); // CORRECCIÓN: Usa maybeSingle para no dar error si está vacío
 
         if (error) throw error;
         
-        // Si hay datos en la DB, los usamos; si no, caemos al metadata (ej: primera vez)
-        if (data) {
-          setFullName(data.full_name || user.user_metadata?.full_name || '');
-          setPhone(data.phone || '');
-          setAvatarUrl(data.avatar_url || user.user_metadata?.avatar_url || null);
-        }
+        setFullName(data?.full_name || user.user_metadata?.full_name || '');
+        setPhone(data?.phone || '');
+        setAvatarUrl(data?.avatar_url || user.user_metadata?.avatar_url || null);
+        
       } catch (error) {
         console.error('Error al cargar perfil', error);
       } finally {
@@ -62,9 +60,7 @@ export default function EditProfileScreen() {
 
   const handlePickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      return Alert.alert('Aviso', 'Se requieren permisos para acceder a la galería y cambiar tu foto.');
-    }
+    if (status !== 'granted') return Alert.alert('Aviso', 'Se requieren permisos para acceder a la galería.');
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -85,42 +81,32 @@ export default function EditProfileScreen() {
     try {
       let finalAvatarUrl = avatarUrl;
 
-      // 1. Si seleccionó una nueva foto, la subimos a nuestro bucket privado en Supabase
       if (newAvatar) {
         const formData = new FormData();
         const fileExt = newAvatar.uri.split('.').pop() || 'jpg';
         const fileName = `${user.id}_avatar_${Date.now()}.${fileExt}`;
         
-        formData.append('file', {
-          uri: newAvatar.uri,
-          name: fileName,
-          type: `image/${fileExt}`
-        } as any);
+        formData.append('file', { uri: newAvatar.uri, name: fileName, type: `image/${fileExt}` } as any);
 
-        const { error: uploadError } = await supabase.storage
-          .from('avatars') 
-          .upload(fileName, formData);
-
+        const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, formData);
         if (uploadError) throw uploadError;
 
-        const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
-        finalAvatarUrl = publicUrl;
+        finalAvatarUrl = supabase.storage.from('avatars').getPublicUrl(fileName).data.publicUrl;
       }
 
-      // 2. Guardamos la información oficial en la tabla 'profiles'
+      // CORRECCIÓN CLAVE: Usamos upsert para forzar la creación o actualización
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({
+        .upsert({
+          id: user.id, // Requerido para el upsert
           full_name: fullName,
           phone: phone,
           avatar_url: finalAvatarUrl,
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', user.id);
+        }, { onConflict: 'id' });
 
       if (updateError) throw updateError;
 
-      // 3. También actualizamos el metadata por si las moscas para mantener sincronía interna
       await supabase.auth.updateUser({
         data: { full_name: fullName, avatar_url: finalAvatarUrl }
       });
@@ -136,28 +122,16 @@ export default function EditProfileScreen() {
     }
   };
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={AuraColors.primary} />
-      </View>
-    );
-  }
+  if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={AuraColors.primary} /></View>;
 
-  // Decidimos qué imagen mostrar en pantalla (la nueva seleccionada o la que ya teníamos)
   const imageToDisplay = newAvatar ? newAvatar.uri : avatarUrl;
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-      >
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-              <Feather name="arrow-left" size={24} color={AuraColors.textPrimary} />
-            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}><Feather name="arrow-left" size={24} color={AuraColors.textPrimary} /></TouchableOpacity>
             <Text style={styles.title}>Editar Perfil</Text>
             <View style={{ width: 40 }} />
           </View>
@@ -167,42 +141,19 @@ export default function EditProfileScreen() {
               {imageToDisplay ? (
                 <Image source={{ uri: imageToDisplay }} style={styles.avatarImage} />
               ) : (
-                <Text style={styles.avatarFallback}>
-                  {fullName ? fullName.charAt(0).toUpperCase() : 'U'}
-                </Text>
+                <Text style={styles.avatarFallback}>{fullName ? fullName.charAt(0).toUpperCase() : 'U'}</Text>
               )}
-              <TouchableOpacity style={styles.editAvatarBadge} onPress={handlePickImage}>
-                <Feather name="camera" size={16} color="white" />
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.editAvatarBadge} onPress={handlePickImage}><Feather name="camera" size={16} color="white" /></TouchableOpacity>
             </View>
             <Text style={styles.avatarHelperText}>Cambiar foto de perfil</Text>
           </View>
 
           <View style={styles.form}>
-            <Input
-              label="Nombre Completo"
-              icon="user"
-              placeholder="Ej. Juan Pérez"
-              value={fullName}
-              onChangeText={setFullName}
-            />
-
-            <Input
-              label="Número de Teléfono"
-              icon="phone"
-              placeholder="Ej. 70000000"
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-            />
+            <Input label="Nombre Completo" icon="user" placeholder="Ej. Juan Pérez" value={fullName} onChangeText={setFullName} />
+            <Input label="Número de Teléfono" icon="phone" placeholder="Ej. 70000000" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
           </View>
 
-          <Button
-            title="Guardar Cambios"
-            onPress={handleSave}
-            loading={saving}
-            style={styles.saveButton}
-          />
+          <Button title="Guardar Cambios" onPress={handleSave} loading={saving} style={styles.saveButton} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

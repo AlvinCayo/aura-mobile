@@ -82,18 +82,22 @@ export default function BecomeCenterScreen() {
     setIsSubmitting(true);
 
     try {
-      // 1. Validar si el perfil existe (para prevenir error de foreign key)
-      const { data: profileCheck, error: checkError } = await supabase
+      // 1. BLINDAJE EXTREMO: Forzamos la creación/actualización del perfil con UPSERT
+      // Esto elimina el error "centers_owner_id_fkey" de raíz.
+      const { error: profileError } = await supabase
         .from('profiles')
-        .select('id')
-        .eq('id', user.id)
-        .single();
+        .upsert({
+          id: user.id,
+          email: user.email,
+          role: 'client', // Mantenemos rol cliente hasta que el SuperAdmin lo apruebe
+          full_name: user.user_metadata?.full_name || 'Usuario',
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
 
-      if (checkError || !profileCheck) {
-          // Si no tiene perfil, lo creamos como cliente normal
-          await supabase.from('profiles').insert([{ id: user.id, email: user.email, role: 'client' }]);
-      } 
-      // Omitimos actualizar el rol aquí. Mantendrá su rol actual hasta ser aprobado.
+      if (profileError) {
+        console.error("Error al asegurar perfil:", profileError);
+        throw new Error("No se pudo sincronizar tu perfil de usuario en la base de datos.");
+      }
 
       // 2. Subir Licencia
       let licenseUrl = '';
@@ -107,6 +111,7 @@ export default function BecomeCenterScreen() {
       }
 
       // 3. Crear Centro en estado PENDIENTE
+      // Aseguramos enviar payment_qr_url como cadena vacía para que no de error ya que en tu BD está como NOT NULL
       const { data: centerData, error: centerError } = await supabase.from('centers').insert({
         owner_id: user.id, 
         name: centerName, 
@@ -117,7 +122,10 @@ export default function BecomeCenterScreen() {
         payment_qr_url: '' 
       }).select('id').single();
 
-      if (centerError) throw centerError;
+      if (centerError) {
+        console.error("Error al crear centro:", centerError);
+        throw centerError;
+      }
 
       // 4. Subir Servicios con Imágenes
       const validServices = services.filter(s => s.name && s.duration && s.price);
@@ -224,7 +232,7 @@ export default function BecomeCenterScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboardView}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           <TouchableOpacity onPress={() => router.back()} style={{ marginBottom: 20 }}>
             <Feather name="arrow-left" size={24} color={AuraColors.textPrimary} />
           </TouchableOpacity>

@@ -17,14 +17,13 @@ type AuthContextProps = {
 
 const AuthContext = createContext<AuthContextProps>({} as AuthContextProps);
 
-// Configuración global: Qué hacer si llega una notificación mientras el usuario tiene la app abierta
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
-    shouldShowBanner: true, // Propiedad agregada para solucionar el error
-    shouldShowList: true,   // Propiedad agregada para solucionar el error
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -34,49 +33,58 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [initialized, setInitialized] = useState<boolean>(false);
 
   useEffect(() => {
-    // Función auxiliar para registrar el token en Supabase
-    const handlePushToken = async (userId: string) => {
+    // Función maestra: Asegura que exista el perfil y guarda el token
+    const handleUserSync = async (currentUser: User) => {
       try {
+        // 1. Verificamos si el perfil público ya existe
+        const { data: profileCheck } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', currentUser.id)
+          .maybeSingle();
+        
+        // 2. Si no existe (ej. login por Google), lo creamos a la fuerza
+        if (!profileCheck) {
+          await supabase.from('profiles').insert([{ 
+            id: currentUser.id, 
+            email: currentUser.email, 
+            role: 'client',
+            full_name: currentUser.user_metadata?.full_name || 'Usuario AURA' 
+          }]);
+        }
+
+        // 3. Manejo de Notificaciones
         const token = await registerForPushNotificationsAsync();
         if (token) {
-          await supabase
-            .from('profiles')
-            .update({ expo_push_token: token })
-            .eq('id', userId);
+          await supabase.from('profiles').update({ expo_push_token: token }).eq('id', currentUser.id);
         }
       } catch (error) {
-        console.log('Aviso (Push):', error);
+        console.log('Error de sincronización de usuario:', error);
       }
     };
 
-    // Buscar la sesión inicial al abrir la app
     const fetchSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
       setUser(session?.user ?? null);
       setInitialized(true);
 
-      // Si ya estaba logueado al abrir la app, actualizamos su token de notificaciones
       if (session?.user) {
-        handlePushToken(session.user.id);
+        handleUserSync(session.user);
       }
     };
 
     fetchSession();
 
-    // Escuchar cambios (cuando hace login o registro)
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
       setUser(newSession?.user ?? null);
-      
       if (newSession?.user) {
-        handlePushToken(newSession.user.id);
+        handleUserSync(newSession.user);
       }
     });
 
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
+    return () => authListener.subscription.unsubscribe();
   }, []);
 
   const signIn = async (email: string, password: string) => {
@@ -92,7 +100,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const signOut = async () => {
-    // Antes de cerrar sesión, borramos el token de push para que no le lleguen notificaciones fantasma
     if (user) {
       await supabase.from('profiles').update({ expo_push_token: null }).eq('id', user.id);
     }
@@ -106,48 +113,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-// --- FUNCIÓN DE EXPO PARA GESTIONAR NOTIFICACIONES ---
 async function registerForPushNotificationsAsync() {
   let token;
-
-  // En Android se requiere un canal de notificación
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#FF231F7C',
+      name: 'default', importance: Notifications.AndroidImportance.MAX, vibrationPattern: [0, 250, 250, 250], lightColor: '#FF231F7C',
     });
   }
-
-  // Verificamos si es un dispositivo físico (los simuladores a veces no soportan push)
   if (Device.isDevice) {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
-    
-    // Si no tiene permisos, se los pedimos
     if (existingStatus !== 'granted') {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
-    
-    // Si el usuario denegó los permisos, no podemos hacer nada
-    if (finalStatus !== 'granted') {
-      console.log('Permiso de notificaciones denegado por el usuario.');
-      return;
-    }
+    if (finalStatus !== 'granted') return;
 
-    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-    
-    // Obtenemos el token usando el Project ID de Expo
     token = (await Notifications.getExpoPushTokenAsync({
-      projectId: projectId,
+      projectId: Constants.expoConfig?.extra?.eas?.projectId,
     })).data;
-    
-  } else {
-    console.log('Las notificaciones Push solo funcionan en dispositivos físicos.');
   }
-
   return token;
 }
 

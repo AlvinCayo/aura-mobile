@@ -61,7 +61,6 @@ export default function AdminAppointmentsScreen() {
     } catch (error) {
       console.error('Error maestro:', error);
     } finally {
-      // ESTA ES LA LÍNEA CLAVE PARA QUE NO SE QUEDE CARGANDO INFINITAMENTE
       setLoading(false);
       setRefreshing(false);
     }
@@ -77,17 +76,40 @@ export default function AdminAppointmentsScreen() {
     fetchAppointments();
   };
 
+  // FUNCIÓN CORREGIDA Y BLINDADA
   const handleUpdateStatus = async (appointmentId: string, newStatus: string, clientName: string) => {
     Alert.alert(
       'Confirmar Acción',
-      `¿Actualizar estado de la cita de ${clientName}?`,
+      `¿Deseas ${newStatus === 'approved' ? 'Aceptar' : 'Rechazar'} la cita de ${clientName}?`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Confirmar',
+          style: newStatus === 'cancelled' ? 'destructive' : 'default',
           onPress: async () => {
-            await supabase.from('appointments').update({ status: newStatus }).eq('id', appointmentId);
-            fetchAppointments(); // Recargamos para refrescar la lista
+            setLoading(true); // Mostramos carga para que la UI no quede congelada
+            try {
+              const { error } = await supabase
+                .from('appointments')
+                .update({ status: newStatus })
+                .eq('id', appointmentId);
+              
+              // SI HAY UN ERROR, AHORA SÍ LO VEREMOS
+              if (error) throw error;
+              
+              Alert.alert(
+                'Éxito', 
+                newStatus === 'approved' 
+                  ? 'Cita aceptada. Ahora puedes verla en la pestaña "Aceptadas" esperando el pago.' 
+                  : 'Cita rechazada.'
+              );
+              
+              fetchAppointments(); // Recargamos para refrescar la lista
+            } catch (error: any) {
+              console.error("Update Error:", error);
+              Alert.alert('Error de Base de Datos', error.message || 'No se pudo actualizar el estado de la cita.');
+              setLoading(false);
+            }
           }
         }
       ]
@@ -95,7 +117,6 @@ export default function AdminAppointmentsScreen() {
   };
 
   const renderItem = ({ item }: { item: any }) => {
-    // Protección contra datos null si se borró el perfil o servicio
     const clientName = item.profiles?.full_name || 'Cliente sin nombre';
     const serviceName = item.services?.name || 'Servicio eliminado';
     const price = item.services?.price || 0;
@@ -151,7 +172,14 @@ export default function AdminAppointmentsScreen() {
       {loading ? (
          <View style={styles.centerLoading}><ActivityIndicator size="large" color={AuraColors.primary} /></View>
       ) : (
-        <FlatList data={appointments} keyExtractor={item => item.id} renderItem={renderItem} contentContainerStyle={styles.listContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[AuraColors.primary]} />} ListEmptyComponent={<Text style={{textAlign: 'center', marginTop: 40, color: AuraColors.textMuted}}>No hay citas en esta categoría.</Text>} />
+        <FlatList 
+          data={appointments} 
+          keyExtractor={item => item.id} 
+          renderItem={renderItem} 
+          contentContainerStyle={styles.listContent} 
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[AuraColors.primary]} />} 
+          ListEmptyComponent={<Text style={{textAlign: 'center', marginTop: 40, color: AuraColors.textMuted}}>No hay citas en esta categoría.</Text>} 
+        />
       )}
     </SafeAreaView>
   );

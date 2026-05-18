@@ -7,6 +7,7 @@ import {
   FlatList,
   Image,
   Linking,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -31,29 +32,22 @@ export default function CenterProfileScreen() {
   const [services, setServices] = useState<any[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // NUEVO: Estado para abrir el modal de detalles
+  const [selectedServiceDetail, setSelectedServiceDetail] = useState<any>(null);
 
   useEffect(() => {
     const fetchCenterData = async () => {
       if (!id) return;
       try {
-        const { data: centerData, error: centerError } = await supabase
-          .from('centers')
-          .select('*')
-          .eq('id', id)
-          .single();
+        const { data: centerData, error: centerError } = await supabase.from('centers').select('*').eq('id', id).single();
         if (centerError) throw centerError;
         setCenter(centerData);
 
-        const { data: servicesData } = await supabase
-          .from('services')
-          .select('*')
-          .eq('center_id', id);
+        const { data: servicesData } = await supabase.from('services').select('*').eq('center_id', id);
         if (servicesData) setServices(servicesData);
 
-        const { data: reviewsData } = await supabase
-          .from('reviews')
-          .select(`id, rating, comment, created_at, profiles:client_id(full_name, avatar_url)`)
-          .eq('center_id', id);
+        const { data: reviewsData } = await supabase.from('reviews').select(`id, rating, comment, created_at, profiles:client_id(full_name, avatar_url)`).eq('center_id', id);
         if (reviewsData) setReviews(reviewsData);
 
       } catch (error: any) {
@@ -63,7 +57,6 @@ export default function CenterProfileScreen() {
         setLoading(false);
       }
     };
-
     fetchCenterData();
   }, [id]);
 
@@ -75,29 +68,20 @@ export default function CenterProfileScreen() {
   };
 
   const handleReportCenter = () => {
-    Alert.prompt(
-      'Reportar Centro',
-      '¿El centro cobra montos diferentes a los de la app o tiene mal comportamiento? Describe el problema:',
-      [
+    Alert.prompt('Reportar Centro', '¿El centro cobra montos diferentes a los de la app o tiene mal comportamiento? Describe el problema:', [
         { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Enviar Reporte', 
-          style: 'destructive',
-          // CORRECCIÓN: Agregado el tipo string al parámetro text
-          onPress: async (text?: string) => {
+        { text: 'Enviar Reporte', style: 'destructive', onPress: async (text?: string) => {
             if (!text) return;
-            await supabase.from('reports').insert({
-              reporter_id: user?.id, center_id: id, reason: 'PRICE_DISCREPANCY_OR_FRAUD', description: text
-            });
+            await supabase.from('reports').insert({ reporter_id: user?.id, center_id: id, reason: 'PRICE_DISCREPANCY_OR_FRAUD', description: text });
             Alert.alert('Reporte Enviado', 'Nuestro equipo investigará este caso. Gracias por mantener AURA segura.');
           }
         }
-      ]
-    );
+    ]);
   };
 
   const renderServiceItem = ({ item }: { item: any }) => (
-    <View style={styles.serviceCard}>
+    // CORRECCIÓN: Ahora es tocable y abre el modal de detalles
+    <TouchableOpacity style={styles.serviceCard} onPress={() => setSelectedServiceDetail(item)}>
       <View style={styles.serviceMain}>
         {item.image_url ? (
           <Image source={{ uri: item.image_url }} style={styles.serviceImage} />
@@ -110,7 +94,7 @@ export default function CenterProfileScreen() {
         </View>
       </View>
       <Text style={styles.servicePrice}>{parseFloat(item.price).toFixed(2)} Bs</Text>
-    </View>
+    </TouchableOpacity>
   );
 
   const renderReviewItem = ({ item }: { item: any }) => {
@@ -119,11 +103,7 @@ export default function CenterProfileScreen() {
       <View style={styles.reviewCard}>
         <View style={styles.reviewHeader}>
           <View style={styles.reviewUser}>
-            {item.profiles?.avatar_url ? (
-              <Image source={{ uri: item.profiles.avatar_url }} style={styles.userAvatar} />
-            ) : (
-              <View style={styles.avatarPlaceholder}><Feather name="user" size={14} color={AuraColors.textMuted} /></View>
-            )}
+            {item.profiles?.avatar_url ? <Image source={{ uri: item.profiles.avatar_url }} style={styles.userAvatar} /> : <View style={styles.avatarPlaceholder}><Feather name="user" size={14} color={AuraColors.textMuted} /></View>}
             <Text style={styles.reviewUserName}>{clientName}</Text>
           </View>
           <View style={styles.ratingStars}>
@@ -141,12 +121,8 @@ export default function CenterProfileScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Feather name="arrow-left" size={20} color={AuraColors.textPrimary} />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={handleReportCenter} style={styles.reportButton}>
-          <Feather name="flag" size={18} color={AuraColors.destructive} />
-        </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}><Feather name="arrow-left" size={20} color={AuraColors.textPrimary} /></TouchableOpacity>
+        <TouchableOpacity onPress={handleReportCenter} style={styles.reportButton}><Feather name="flag" size={18} color={AuraColors.destructive} /></TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
@@ -159,75 +135,88 @@ export default function CenterProfileScreen() {
           <Text style={styles.centerTitle}>{center?.name}</Text>
           
           <View style={styles.rowMeta}>
-            <View style={styles.ratingBadge}>
-              <Feather name="star" size={14} color="#F59E0B" fill="#F59E0B" />
-              <Text style={styles.ratingText}>{(center?.rating || 4.5).toFixed(1)}</Text>
-            </View>
+            <View style={styles.ratingBadge}><Feather name="star" size={14} color="#F59E0B" fill="#F59E0B" /><Text style={styles.ratingText}>{(center?.rating || 4.5).toFixed(1)}</Text></View>
             <Text style={styles.metaDivider}>•</Text>
             <Text style={styles.metaLocationText}>{center?.address?.split(',')[0] || 'Local'}</Text>
           </View>
 
           <View style={styles.badgesContainer}>
-            <View style={styles.badgeItem}>
-              <Feather name="shield" size={14} color="#16A34A" />
-              <Text style={styles.badgeText}>Reserva Segura</Text>
-            </View>
-            {center?.payment_qr_url && (
-              <View style={styles.badgeItem}>
-                <Feather name="smartphone" size={14} color={AuraColors.primary} />
-                <Text style={styles.badgeText}>Acepta QR Digital</Text>
-              </View>
-            )}
+            <View style={styles.badgeItem}><Feather name="shield" size={14} color="#16A34A" /><Text style={styles.badgeText}>Reserva Segura</Text></View>
+            {center?.payment_qr_url && <View style={styles.badgeItem}><Feather name="smartphone" size={14} color={AuraColors.primary} /><Text style={styles.badgeText}>Acepta QR Digital</Text></View>}
           </View>
 
           <View style={styles.securityBanner}>
             <Feather name="info" size={16} color="#D97706" />
-            <Text style={styles.securityBannerText}>
-              <Text style={{ fontWeight: '700' }}>Garantía AURA: </Text>
-              Paga el precio exacto que ves aquí. Si el centro te exige un monto diferente al finalizar, repórtalo.
-            </Text>
+            <Text style={styles.securityBannerText}><Text style={{ fontWeight: '700' }}>Garantía AURA: </Text>Paga el precio exacto que ves aquí. Si el centro te exige un monto diferente al finalizar, repórtalo.</Text>
           </View>
 
           <View style={styles.tabsContainer}>
             {(['services', 'info', 'reviews'] as TabType[]).map((tab) => (
               <TouchableOpacity key={tab} style={[styles.tabItem, activeTab === tab && styles.tabItemActive]} onPress={() => setActiveTab(tab)}>
-                <Text style={[styles.tabLabel, activeTab === tab && styles.tabLabelActive]}>
-                  {tab === 'services' ? 'Servicios' : tab === 'info' ? 'Nosotros' : `Reseñas (${reviews.length})`}
-                </Text>
+                <Text style={[styles.tabLabel, activeTab === tab && styles.tabLabelActive]}>{tab === 'services' ? 'Servicios' : tab === 'info' ? 'Nosotros' : `Reseñas (${reviews.length})`}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          {activeTab === 'services' && (
-            <FlatList data={services} keyExtractor={(item) => item.id} renderItem={renderServiceItem} scrollEnabled={false} />
-          )}
-
+          {activeTab === 'services' && <FlatList data={services} keyExtractor={(item) => item.id} renderItem={renderServiceItem} scrollEnabled={false} />}
+          
           {activeTab === 'info' && (
             <View style={styles.aboutBox}>
               <Text style={styles.aboutDescription}>{center?.description}</Text>
               <View style={styles.locationDetailRow}>
                 <Feather name="map-pin" size={16} color={AuraColors.primary} style={{ marginTop: 2 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.locationTitle}>Dirección Exacta</Text>
-                  <Text style={styles.locationBody}>{center?.address}</Text>
-                </View>
+                <View style={{ flex: 1 }}><Text style={styles.locationTitle}>Dirección Exacta</Text><Text style={styles.locationBody}>{center?.address}</Text></View>
               </View>
-              <TouchableOpacity style={styles.whatsappButton} onPress={handleWhatsAppContact}>
-                <Feather name="message-circle" size={18} color="#16A34A" />
-                <Text style={styles.whatsappButtonText}>Consultar por WhatsApp</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.whatsappButton} onPress={handleWhatsAppContact}><Feather name="message-circle" size={18} color="#16A34A" /><Text style={styles.whatsappButtonText}>Consultar por WhatsApp</Text></TouchableOpacity>
             </View>
           )}
 
-          {activeTab === 'reviews' && (
-            <FlatList data={reviews} keyExtractor={(item) => item.id} renderItem={renderReviewItem} scrollEnabled={false} />
-          )}
+          {activeTab === 'reviews' && <FlatList data={reviews} keyExtractor={(item) => item.id} renderItem={renderReviewItem} scrollEnabled={false} />}
         </View>
       </ScrollView>
 
       <View style={styles.floatingActionFooter}>
         <Button title="Agendar una Cita" onPress={() => router.push(`/booking/${id}` as any)} icon={<Feather name="calendar" size={18} color="white" />} />
       </View>
+
+      {/* NUEVO MODAL DE DETALLES AMPLIADOS DEL SERVICIO */}
+      <Modal visible={!!selectedServiceDetail} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.serviceModalContent}>
+            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setSelectedServiceDetail(null)}>
+              <Feather name="x" size={24} color={AuraColors.textPrimary} />
+            </TouchableOpacity>
+            
+            {selectedServiceDetail?.image_url ? (
+              <Image source={{ uri: selectedServiceDetail.image_url }} style={styles.serviceModalImage} />
+            ) : (
+              <View style={styles.serviceModalImagePlaceholder}>
+                <Feather name="image" size={48} color={AuraColors.primary} />
+              </View>
+            )}
+            
+            <Text style={styles.serviceModalTitle}>{selectedServiceDetail?.name}</Text>
+            <Text style={styles.serviceModalPrice}>{selectedServiceDetail?.price} Bs</Text>
+            
+            <View style={styles.serviceModalRow}>
+              <Feather name="clock" size={16} color={AuraColors.textSecondary} />
+              <Text style={styles.serviceModalDuration}>{selectedServiceDetail?.duration_min} minutos aprox.</Text>
+            </View>
+            
+            <Text style={styles.serviceModalDescTitle}>Detalles del servicio</Text>
+            <Text style={styles.serviceModalDesc}>
+              {selectedServiceDetail?.description || 'Este servicio no cuenta con una descripción detallada por el momento.'}
+            </Text>
+
+            <Button 
+              title="Cerrar Detalles" 
+              onPress={() => setSelectedServiceDetail(null)} 
+              style={{ marginTop: 24 }}
+            />
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -283,4 +272,17 @@ const styles = StyleSheet.create({
   ratingValueText: { fontSize: 12, fontWeight: '600', color: AuraColors.textSecondary },
   reviewComment: { fontSize: 14, color: AuraColors.textSecondary, lineHeight: 20 },
   floatingActionFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 24, backgroundColor: 'white', borderTopWidth: 1, borderTopColor: AuraColors.border },
+  
+  // Estilos del Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  serviceModalContent: { backgroundColor: AuraColors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, minHeight: '50%' },
+  closeModalBtn: { alignSelf: 'flex-end', padding: 8, backgroundColor: '#F1F5F9', borderRadius: 20, marginBottom: 16 },
+  serviceModalImage: { width: '100%', height: 200, borderRadius: 16, marginBottom: 16 },
+  serviceModalImagePlaceholder: { width: '100%', height: 200, borderRadius: 16, backgroundColor: AuraColors.primaryLight, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  serviceModalTitle: { fontSize: 22, fontWeight: '800', color: AuraColors.textPrimary, marginBottom: 4 },
+  serviceModalPrice: { fontSize: 20, fontWeight: '700', color: AuraColors.primary, marginBottom: 12 },
+  serviceModalRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20 },
+  serviceModalDuration: { fontSize: 14, color: AuraColors.textSecondary, fontWeight: '500' },
+  serviceModalDescTitle: { fontSize: 16, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 8 },
+  serviceModalDesc: { fontSize: 14, color: AuraColors.textSecondary, lineHeight: 22 },
 });
