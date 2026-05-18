@@ -1,177 +1,177 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AppointmentCard from '../../src/components/ui/AppointmentCard';
+import Button from '../../src/components/ui/Button';
 import { useAuth } from '../../src/contexts/AuthContext';
-import { fetchMyAppointments } from '../../src/lib/data';
+import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
-export default function AppointmentsScreen() {
-  const { user } = useAuth();
+type Tab = 'upcoming' | 'history';
+
+export default function ClientAppointmentsScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<Tab>('upcoming');
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadAppointments = async () => {
+  const fetchAppointments = async () => {
     if (!user) return;
-    const { data } = await fetchMyAppointments(user.id);
-    setAppointments(data || []);
-    setLoading(false);
-    setRefreshing(false);
-  };
+    try {
+      let query = supabase
+        .from('appointments')
+        .select(`
+          id, appointment_date, start_time, status,
+          centers (name, address, payment_qr_url),
+          services (name, price)
+        `)
+        .eq('client_id', user.id)
+        .order('appointment_date', { ascending: false })
+        .order('start_time', { ascending: false });
 
-  useEffect(() => {
-    loadAppointments();
-  }, [user]);
+      // Filtramos en base a la pestaña seleccionada
+      if (activeTab === 'upcoming') {
+        query = query.in('status', ['pending', 'approved', 'paid']);
+      } else {
+        query = query.in('status', ['completed', 'cancelled']);
+      }
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadAppointments();
-  };
-
-  // Función para obtener el color según el estado
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'confirmed': return AuraColors.success;
-      case 'pending': return '#F59E0B'; // Ambar/Naranja
-      case 'completed': return AuraColors.primary;
-      case 'cancelled': return AuraColors.destructive;
-      default: return AuraColors.textMuted;
+      const { data, error } = await query;
+      if (error) throw error;
+      setAppointments(data || []);
+    } catch (error) {
+      console.error('Error cargando citas del cliente:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const renderAppointment = ({ item }: { item: any }) => {
-    // Cálculo del total con la comisión del 10%
-    const servicePrice = parseFloat(item.service?.price || '0');
-    const total = servicePrice + (servicePrice * 0.10);
+  useEffect(() => {
+    setLoading(true);
+    fetchAppointments();
+  }, [user, activeTab]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchAppointments();
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'pending': return { label: 'En Revisión', bg: '#FEF3C7', color: '#D97706' };
+      case 'approved': return { label: 'Esperando Pago', bg: '#DBEAFE', color: '#2563EB' };
+      case 'paid': return { label: 'Confirmada', bg: '#DCFCE7', color: '#16A34A' };
+      case 'completed': return { label: 'Completada', bg: '#F1F5F9', color: '#64748B' };
+      case 'cancelled': return { label: 'Cancelada', bg: '#FEE2E2', color: '#EF4444' };
+      default: return { label: status, bg: '#F1F5F9', color: '#64748B' };
+    }
+  };
+
+  const renderItem = ({ item }: { item: any }) => {
+    const statusConfig = getStatusBadge(item.status);
+    const centerName = item.centers?.name || 'Centro no disponible';
+    const serviceName = item.services?.name || 'Servicio eliminado';
+    const price = item.services?.price || 0;
 
     return (
-      <View style={styles.cardWrapper}>
-        <View style={styles.statusHeader}>
-          <View style={[styles.statusDot, { backgroundColor: getStatusColor(item.status) }]} />
-          <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
-            {item.status === 'confirmed' ? 'Aprobada' : item.status === 'pending' ? 'Pendiente de aprobación' : item.status}
-          </Text>
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.centerName} numberOfLines={1}>{centerName}</Text>
+          <View style={[styles.badge, { backgroundColor: statusConfig.bg }]}>
+            <Text style={[styles.badgeText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
+          </View>
         </View>
 
-        <AppointmentCard
-          centerName={item.center?.name || 'Centro'}
-          serviceName={item.service?.name || 'Servicio'}
-          date={item.appointment_date}
-          time={item.start_time.slice(0, 5)}
-          price={`${total.toFixed(2)} Bs`}
-          status={item.status}
-        />
-
-        {/* Lógica de Pago: Solo si está confirmada y no ha pagado aún */}
-        {item.status === 'confirmed' && (
-          <TouchableOpacity 
-            style={styles.payButton}
-            onPress={() => router.push({
-              pathname: '/payment/[appointmentId]',
-              params: { appointmentId: item.id, amount: total.toFixed(2) }
-            } as any)}
-          >
-            <Feather name="grid" size={18} color="white" />
-            <Text style={styles.payButtonText}>Pagar con QR (Habilitado)</Text>
-          </TouchableOpacity>
-        )}
+        <Text style={styles.serviceName}>{serviceName}</Text>
+        <Text style={styles.dateTimeText}>
+          <Feather name="calendar" size={14} /> {item.appointment_date}  •  <Feather name="clock" size={14} /> {item.start_time.slice(0, 5)}
+        </Text>
         
-        {/* Lógica de Pendiente: Mensaje informativo */}
-        {item.status === 'pending' && (
-          <View style={styles.infoBox}>
-            <Feather name="info" size={14} color={AuraColors.textMuted} />
-            <Text style={styles.infoText}>El pago se habilitará cuando el centro apruebe tu cita.</Text>
-          </View>
-        )}
+        <View style={styles.divider} />
 
-        {/* NUEVO: Botón de Reseña si la cita ya fue completada */}
-        {item.status === 'completed' && (
-          <TouchableOpacity 
-            style={[styles.payButton, { backgroundColor: AuraColors.primaryLight, borderWidth: 1, borderColor: AuraColors.primary }]}
-            onPress={() => router.push({
-              pathname: '/review/[centerId]',
-              params: { centerId: item.center_id || item.center?.id }
-            } as any)}
-          >
-            <Feather name="star" size={18} color={AuraColors.primary} />
-            <Text style={[styles.payButtonText, { color: AuraColors.primary }]}>Calificar Experiencia</Text>
-          </TouchableOpacity>
+        <View style={styles.footerRow}>
+          <Text style={styles.priceLabel}>Total del servicio:</Text>
+          <Text style={styles.priceText}>{parseFloat(price).toFixed(2)} Bs</Text>
+        </View>
+
+        {/* LÓGICA DE NEGOCIO: Botón de pago disponible si el estado es 'approved' */}
+        {item.status === 'approved' && (
+          <Button 
+            title="Pagar Seña y Confirmar" 
+            onPress={() => router.push(`/payment/${item.id}` as any)} 
+            icon={<Feather name="credit-card" size={18} color="white" />}
+            style={styles.payButton}
+          />
         )}
       </View>
     );
   };
-
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={AuraColors.primary} />
-      </View>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Mis Citas</Text>
-        <Text style={styles.headerSubtitle}>Gestiona tus reservas y pagos</Text>
       </View>
 
-      <FlatList
-        data={appointments}
-        keyExtractor={(item) => item.id}
-        renderItem={renderAppointment}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[AuraColors.primary]} />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Feather name="calendar" size={64} color={AuraColors.border} />
-            <Text style={styles.emptyTitle}>No tienes citas aún</Text>
-            <Text style={styles.emptyText}>Explora los mejores centros en La Paz y reserva tu primer servicio.</Text>
-            <TouchableOpacity style={styles.exploreButton} onPress={() => router.push('/(tabs)')}>
-              <Text style={styles.exploreButtonText}>Explorar Centros</Text>
-            </TouchableOpacity>
-          </View>
-        }
-      />
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity style={[styles.tabBtn, activeTab === 'upcoming' && styles.tabBtnActive]} onPress={() => setActiveTab('upcoming')}>
+          <Text style={[styles.tabText, activeTab === 'upcoming' && styles.tabTextActive]}>Próximas</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.tabBtn, activeTab === 'history' && styles.tabBtnActive]} onPress={() => setActiveTab('history')}>
+          <Text style={[styles.tabText, activeTab === 'history' && styles.tabTextActive]}>Historial</Text>
+        </TouchableOpacity>
+      </View>
+
+      {loading ? (
+        <View style={styles.centerLoading}><ActivityIndicator size="large" color={AuraColors.primary} /></View>
+      ) : (
+        <FlatList
+          data={appointments}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={styles.listContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[AuraColors.primary]} />}
+          ListEmptyComponent={
+            <View style={styles.emptyBox}>
+              <Feather name="calendar" size={48} color={AuraColors.border} />
+              <Text style={styles.emptyTitle}>Sin citas</Text>
+              <Text style={styles.emptySub}>No tienes citas en esta sección.</Text>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: AuraColors.background },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { padding: 24, paddingBottom: 12 },
-  headerTitle: { fontSize: 28, fontWeight: '800', color: AuraColors.textPrimary },
-  headerSubtitle: { fontSize: 15, color: AuraColors.textSecondary, marginTop: 4 },
-  listContent: { padding: 24, paddingTop: 12, paddingBottom: 40 },
-  cardWrapper: { marginBottom: 20, backgroundColor: AuraColors.card, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: AuraColors.border },
-  statusHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 8 },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusText: { fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-  payButton: { 
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
-    backgroundColor: AuraColors.success, padding: 14, borderRadius: 12, marginTop: 16 
-  },
-  payButtonText: { color: 'white', fontWeight: '700', fontSize: 15 },
-  infoBox: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, opacity: 0.7 },
-  infoText: { fontSize: 12, color: AuraColors.textMuted, fontStyle: 'italic' },
-  emptyContainer: { alignItems: 'center', marginTop: 80, paddingHorizontal: 40 },
-  emptyTitle: { fontSize: 20, fontWeight: '700', color: AuraColors.textPrimary, marginTop: 20 },
-  emptyText: { fontSize: 15, color: AuraColors.textSecondary, textAlign: 'center', marginTop: 10, lineHeight: 22 },
-  exploreButton: { marginTop: 24, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: AuraColors.primaryLight, borderRadius: 12 },
-  exploreButtonText: { color: AuraColors.primary, fontWeight: '700' }
+  header: { padding: 24, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: AuraColors.border },
+  headerTitle: { fontSize: 24, fontWeight: '800', color: AuraColors.textPrimary },
+  tabsContainer: { flexDirection: 'row', padding: 16, backgroundColor: AuraColors.background },
+  tabBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabBtnActive: { borderBottomColor: AuraColors.primary },
+  tabText: { fontSize: 14, fontWeight: '600', color: AuraColors.textSecondary },
+  tabTextActive: { color: AuraColors.primary },
+  centerLoading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  listContent: { padding: 24, paddingBottom: 40 },
+  card: { backgroundColor: AuraColors.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: AuraColors.border, marginBottom: 16 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  centerName: { fontSize: 16, fontWeight: '700', color: AuraColors.textPrimary, flex: 1, paddingRight: 8 },
+  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  badgeText: { fontSize: 11, fontWeight: '700' },
+  serviceName: { fontSize: 14, color: AuraColors.textSecondary, marginBottom: 12 },
+  dateTimeText: { fontSize: 14, fontWeight: '600', color: AuraColors.textPrimary, backgroundColor: '#F8FAFC', padding: 10, borderRadius: 8 },
+  divider: { height: 1, backgroundColor: AuraColors.border, marginVertical: 16 },
+  footerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  priceLabel: { fontSize: 14, color: AuraColors.textMuted },
+  priceText: { fontSize: 18, fontWeight: '800', color: AuraColors.primary },
+  payButton: { marginTop: 16 },
+  emptyBox: { alignItems: 'center', marginTop: 80 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary, marginTop: 16 },
+  emptySub: { fontSize: 14, color: AuraColors.textSecondary, marginTop: 8 },
 });

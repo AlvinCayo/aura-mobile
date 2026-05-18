@@ -91,10 +91,10 @@ export default function PaymentScreen() {
 
     try {
       // 1. Subir la imagen del comprobante al Bucket
-      const formData = new FormData();
       const fileExt = receiptImage.uri.split('.').pop() || 'jpg';
       const fileName = `receipt_${appointmentId}_${Date.now()}.${fileExt}`;
       
+      const formData = new FormData();
       formData.append('file', {
         uri: receiptImage.uri,
         name: fileName,
@@ -122,6 +122,16 @@ export default function PaymentScreen() {
 
       if (updateError) throw updateError;
 
+      // 3. Registrar en la tabla de transacciones 'payments'
+      await supabase.from('payments').insert({
+        appointment_id: appointmentId,
+        amount: total,
+        commission: commission, 
+        status: 'completed',
+        payment_method: 'QR',
+        paid_at: new Date().toISOString()
+      });
+
       Alert.alert('¡Pago Confirmado!', 'Tu comprobante ha sido enviado exitosamente.', [
         { text: 'Aceptar', onPress: () => router.replace('/(tabs)/appointments') }
       ]);
@@ -136,6 +146,9 @@ export default function PaymentScreen() {
   if (loading) {
     return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={AuraColors.primary} /></View>;
   }
+
+  // Verificamos si el centro tiene QR para habilitar o no los botones
+  const hasQrUrl = appointment?.center?.payment_qr_url && appointment.center.payment_qr_url.trim() !== '';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -178,7 +191,7 @@ export default function PaymentScreen() {
           <Text style={styles.qrSubtitle}>Escanea o guarda esta imagen para pagar desde tu app bancaria.</Text>
           
           <View style={styles.qrContainer}>
-            {appointment?.center?.payment_qr_url ? (
+            {hasQrUrl ? (
               <Image source={{ uri: appointment.center.payment_qr_url }} style={styles.qrImage} resizeMode="contain" />
             ) : (
               <View style={styles.qrPlaceholder}>
@@ -194,13 +207,15 @@ export default function PaymentScreen() {
           <Text style={styles.sectionTitle}>Comprobante de Pago</Text>
           <Text style={styles.receiptSubtitle}>Una vez realizada la transferencia, sube la captura de pantalla aquí.</Text>
 
-          <TouchableOpacity style={styles.uploadButton} onPress={pickReceiptImage}>
+          <TouchableOpacity style={[styles.uploadButton, !hasQrUrl && { opacity: 0.5 }]} onPress={pickReceiptImage} disabled={!hasQrUrl}>
             {receiptImage ? (
               <Image source={{ uri: receiptImage.uri }} style={styles.receiptPreview} />
             ) : (
               <View style={styles.uploadPlaceholder}>
-                <Feather name="upload-cloud" size={32} color={AuraColors.primary} />
-                <Text style={styles.uploadText}>Toca para subir captura</Text>
+                <Feather name="upload-cloud" size={32} color={hasQrUrl ? AuraColors.primary : AuraColors.textMuted} />
+                <Text style={[styles.uploadText, !hasQrUrl && { color: AuraColors.textMuted }]}>
+                  {hasQrUrl ? 'Toca para subir captura' : 'No disponible sin QR'}
+                </Text>
               </View>
             )}
             {receiptImage && (
@@ -212,11 +227,11 @@ export default function PaymentScreen() {
         </View>
 
         <Button
-          title="Enviar Comprobante"
+          title={hasQrUrl ? "Enviar Comprobante" : "Centro sin QR"}
           onPress={handleSubmitPayment}
           loading={isSubmitting}
           style={{ marginTop: 12, marginBottom: 40 }}
-          disabled={!appointment?.center?.payment_qr_url}
+          disabled={!hasQrUrl || !receiptImage}
         />
       </ScrollView>
     </SafeAreaView>

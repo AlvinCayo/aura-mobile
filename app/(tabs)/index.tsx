@@ -1,145 +1,143 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Dimensions,
-  FlatList,
-  ScrollView, StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CategoryCard from '../../src/components/ui/CategoryCard';
 import CenterCard from '../../src/components/ui/CenterCard';
-import SearchBar from '../../src/components/ui/SearchBar';
-import { fetchCategories, fetchCenters } from '../../src/lib/data';
+import { useAuth } from '../../src/contexts/AuthContext';
+import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = width * 0.7;
+const CATEGORIES = [
+  { id: '1', name: 'Barbería', icon: 'scissors', color: '#DBEAFE' },
+  { id: '2', name: 'Peluquería', icon: 'wind', color: '#FCE7F3' },
+  { id: '3', name: 'Uñas', icon: 'edit-2', color: '#FEF3C7' },
+  { id: '4', name: 'Spa & Masajes', icon: 'smile', color: '#DCFCE7' },
+];
 
 export default function HomeScreen() {
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [centers, setCenters] = useState<any[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const { user } = useAuth();
+  
+  const [centers, setCenters] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [profileData, setProfileData] = useState<any>(null);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    fetchData();
+  }, [user]);
 
-  const loadData = async () => {
-    setLoading(true);
-    const [centersRes, categoriesRes] = await Promise.all([
-      fetchCenters(),
-      fetchCategories(),
-    ]);
-    if (centersRes.data) setCenters(centersRes.data);
-    if (categoriesRes.data) setCategories(categoriesRes.data);
-    setLoading(false);
+  const fetchData = async () => {
+    try {
+      if (user) {
+        const { data: pData } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', user.id).single();
+        if (pData) setProfileData(pData);
+      }
+
+      const { data, error } = await supabase.from('centers').select('*').eq('status', 'approved').limit(5);
+      if (error) throw error;
+      setCenters(data || []);
+    } catch (error) {
+      console.error('Error fetching home data:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Filtrar centros si hay categoría seleccionada
-  const filteredCenters = selectedCategory
-    ? centers.filter((c) => c.category === selectedCategory)
-    : centers;
+  const displayName = profileData?.full_name || user?.user_metadata?.full_name?.split(' ')[0] || 'Usuario';
+  const displayAvatar = profileData?.avatar_url || user?.user_metadata?.avatar_url;
 
   if (loading) {
-    return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={AuraColors.primary} />
-      </SafeAreaView>
-    );
+    return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={AuraColors.primary} /></View>;
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>¡Hola! 👋</Text>
-            <Text style={styles.subtitle}>Encuentra tu centro ideal</Text>
-          </View>
-          <TouchableOpacity onPress={() => router.push('/profile')}>
-            <View style={styles.avatarPlaceholder}>
-              <Feather name="user" size={24} color={AuraColors.textMuted} />
-            </View>
-          </TouchableOpacity>
+      <View style={styles.header}>
+        <View style={styles.headerInfo}>
+          <Text style={styles.greeting}>Hola, {displayName} 👋</Text>
+          <Text style={styles.subtitle}>¿Qué servicio buscas hoy?</Text>
         </View>
+        <TouchableOpacity style={styles.avatarContainer} onPress={() => router.push('/profile')}>
+          {displayAvatar ? (
+            <Image source={{ uri: displayAvatar }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatarFallback}><Text style={styles.avatarInitial}>{displayName.charAt(0).toUpperCase()}</Text></View>
+          )}
+        </TouchableOpacity>
+      </View>
 
-        {/* SearchBar */}
-        <View style={styles.searchContainer}>
-          <SearchBar
-            placeholder="Buscar centros o tratamientos..."
-            onFilterPress={() => router.push('/search' as any)}
-            onFocus={() => router.push('/search' as any)}
-          />
-        </View>
-
-        {/* Categorías */}
-        {categories.length > 0 && (
+      <FlatList
+        data={[]} 
+        keyExtractor={() => "dummy"}
+        renderItem={null}
+        ListHeaderComponent={
           <>
+            <TouchableOpacity style={styles.searchBarContainer} onPress={() => router.push('/search')}>
+              <Feather name="search" size={20} color={AuraColors.textMuted} />
+              <Text style={styles.searchBarPlaceholder}>Buscar centros, servicios...</Text>
+            </TouchableOpacity>
+
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Categorías</Text>
             </View>
-            <FlatList
-              horizontal
-              data={categories}
-              keyExtractor={(item) => item}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.categoriesList}
-              renderItem={({ item }) => (
-                <CategoryCard
-                  icon="tag"
-                  label={item}
-                  selected={selectedCategory === item}
-                  onPress={() => setSelectedCategory(selectedCategory === item ? null : item)}
-                />
-              )}
-            />
-          </>
-        )}
+            <View style={styles.categoriesGrid}>
+              {CATEGORIES.map((cat) => (
+                // CORRECCIÓN: Se usa 'label' en lugar de 'title'
+                <CategoryCard key={cat.id} label={cat.name} icon={cat.icon} onPress={() => router.push('/search')} />
+              ))}
+            </View>
 
-        {/* Centros destacados */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Centros disponibles</Text>
-        </View>
-        {filteredCenters.length > 0 ? (
-          filteredCenters.map((center) => (
-            <CenterCard
-              key={center.id}
-              name={center.name}
-              category={center.category}
-              rating={center.rating || 0}
-              reviews={center.reviews_count || 0}
-              distance={center.address}
-              onPress={() => router.push(`/center/${center.id}` as any)}
-              style={{ marginBottom: 16 }}
-            />
-          ))
-        ) : (
-          <Text style={styles.emptyText}>No hay centros disponibles en esta categoría.</Text>
-        )}
-      </ScrollView>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Centros Destacados</Text>
+              <TouchableOpacity onPress={() => router.push('/search')}><Text style={styles.seeAll}>Ver todos</Text></TouchableOpacity>
+            </View>
+          </>
+        }
+        ListFooterComponent={
+          <View style={styles.centersList}>
+            {centers.length > 0 ? (
+              centers.map(center => (
+                // CORRECCIÓN: Se eliminaron propiedades inexistentes y se ajustó image
+                <CenterCard 
+                  key={center.id} 
+                  name={center.name} 
+                  category={center.category || 'Belleza'} 
+                  rating={center.rating || 4.5} 
+                  reviews={center.reviews_count || 0} 
+                  image={center.image_url || 'https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=600&auto=format&fit=crop'} 
+                  onPress={() => router.push(`/center/${center.id}` as any)} 
+                />
+              ))
+            ) : (
+              <Text style={styles.emptyText}>No hay centros aprobados aún.</Text>
+            )}
+          </View>
+        }
+        showsVerticalScrollIndicator={false}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: AuraColors.background },
   container: { flex: 1, backgroundColor: AuraColors.background },
-  scrollContent: { paddingBottom: 32 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingTop: 16, paddingBottom: 20 },
-  greeting: { fontSize: 24, fontWeight: '700', color: AuraColors.textPrimary },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, paddingBottom: 16 },
+  headerInfo: { flex: 1 },
+  greeting: { fontSize: 24, fontWeight: '800', color: AuraColors.textPrimary },
   subtitle: { fontSize: 14, color: AuraColors.textSecondary, marginTop: 4 },
-  avatarPlaceholder: { width: 44, height: 44, borderRadius: 22, backgroundColor: AuraColors.border, justifyContent: 'center', alignItems: 'center' },
-  searchContainer: { paddingHorizontal: 24, marginBottom: 24 },
-  sectionHeader: { paddingHorizontal: 24, marginBottom: 16, marginTop: 8 },
-  sectionTitle: { fontSize: 18, fontWeight: '600', color: AuraColors.textPrimary },
-  categoriesList: { paddingLeft: 24, gap: 10, marginBottom: 16 },
-  emptyText: { textAlign: 'center', color: AuraColors.textMuted, marginTop: 20 },
+  avatarContainer: { width: 48, height: 48, borderRadius: 24, overflow: 'hidden', borderWidth: 2, borderColor: AuraColors.primaryLight },
+  avatar: { width: '100%', height: '100%' },
+  avatarFallback: { flex: 1, backgroundColor: AuraColors.primary, justifyContent: 'center', alignItems: 'center' },
+  avatarInitial: { color: 'white', fontWeight: '700', fontSize: 20 },
+  searchBarContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: AuraColors.card, marginHorizontal: 24, paddingHorizontal: 16, height: 50, borderRadius: 12, borderWidth: 1, borderColor: AuraColors.border, marginBottom: 24 },
+  searchBarPlaceholder: { color: AuraColors.textMuted, marginLeft: 12, fontSize: 15 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', paddingHorizontal: 24, marginBottom: 16 },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary },
+  seeAll: { fontSize: 14, fontWeight: '600', color: AuraColors.primary },
+  categoriesGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 24, gap: 12, marginBottom: 32 },
+  centersList: { paddingHorizontal: 24, gap: 16, paddingBottom: 40 },
+  emptyText: { textAlign: 'center', color: AuraColors.textMuted, fontStyle: 'italic', marginTop: 20 },
 });
