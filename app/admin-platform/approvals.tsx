@@ -40,19 +40,27 @@ export default function ApprovalsScreen() {
     await WebBrowser.openBrowserAsync(url);
   };
 
-  const updateCenterStatus = async (id: string, status: 'approved' | 'rejected', centerName: string) => {
+  const updateCenterStatus = async (id: string, status: 'approved' | 'rejected', centerName: string, ownerId: string) => {
     Alert.alert(
       status === 'approved' ? 'Aprobar Centro' : 'Rechazar Centro',
-      `¿Estás seguro de que deseas ${status === 'approved' ? 'aprobar' : 'rechazar'} al establecimiento "${centerName}"?`,
+      `¿Deseas ${status === 'approved' ? 'aprobar' : 'rechazar'} a "${centerName}"?`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Confirmar',
           style: status === 'rejected' ? 'destructive' : 'default',
           onPress: async () => {
+            // 1. Actualizamos el estado del centro
             const { error } = await supabase.from('centers').update({ status }).eq('id', id);
-            if (error) Alert.alert('Error', 'No se pudo procesar la solicitud.');
-            else {
+            
+            if (error) {
+              Alert.alert('Error', 'No se pudo procesar la solicitud.');
+            } else {
+              // 2. SI SE APRUEBA, LE DAMOS EL ROL AL DUEÑO OFICIALMENTE
+              if (status === 'approved' && ownerId) {
+                await supabase.from('profiles').update({ role: 'center_owner' }).eq('id', ownerId);
+              }
+              
               Alert.alert('Éxito', `Centro ${status === 'approved' ? 'aprobado' : 'rechazado'} correctamente.`);
               setCenters(prev => prev.filter(c => c.id !== id));
             }
@@ -77,11 +85,11 @@ export default function ApprovalsScreen() {
       </TouchableOpacity>
 
       <View style={styles.actionsRow}>
-        <TouchableOpacity style={[styles.btn, styles.btnReject]} onPress={() => updateCenterStatus(item.id, 'rejected', item.name)}>
+        <TouchableOpacity style={[styles.btn, styles.btnReject]} onPress={() => updateCenterStatus(item.id, 'approved', item.name, item.owner?.id)}>
           <Feather name="x" size={18} color="#EF4444" />
           <Text style={styles.textReject}>Rechazar</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.btn, styles.btnApprove]} onPress={() => updateCenterStatus(item.id, 'approved', item.name)}>
+        <TouchableOpacity style={[styles.btn, styles.btnApprove]} onPress={() => updateCenterStatus(item.id, 'approved', item.name, item.owner?.id)}>
           <Feather name="check" size={18} color="white" />
           <Text style={styles.textApprove}>Aprobar Operación</Text>
         </TouchableOpacity>

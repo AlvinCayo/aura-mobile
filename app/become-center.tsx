@@ -82,7 +82,7 @@ export default function BecomeCenterScreen() {
     setIsSubmitting(true);
 
     try {
-      // Validar primero si el perfil existe para prevenir el error de constraint foreign key
+      // 1. Validar si el perfil existe (para prevenir error de foreign key)
       const { data: profileCheck, error: checkError } = await supabase
         .from('profiles')
         .select('id')
@@ -90,16 +90,12 @@ export default function BecomeCenterScreen() {
         .single();
 
       if (checkError || !profileCheck) {
-          // Si por alguna razón la cuenta no tiene perfil público creado (ej. Google Login incompleto)
-          // lo forzamos a crearse con datos por defecto antes de registrar el centro.
-          await supabase.from('profiles').insert([{ id: user.id, email: user.email, role: 'center_owner' }]);
-      } else {
-         // Si ya existe, nos aseguramos que el rol sea el correcto.
-         await supabase.from('profiles').update({ role: 'center_owner' }).eq('id', user.id);
-      }
+          // Si no tiene perfil, lo creamos como cliente normal
+          await supabase.from('profiles').insert([{ id: user.id, email: user.email, role: 'client' }]);
+      } 
+      // Omitimos actualizar el rol aquí. Mantendrá su rol actual hasta ser aprobado.
 
-
-      // 1. Subir Licencia
+      // 2. Subir Licencia
       let licenseUrl = '';
       if (licenseFile) {
         const formData = new FormData();
@@ -110,7 +106,7 @@ export default function BecomeCenterScreen() {
         licenseUrl = supabase.storage.from('licenses').getPublicUrl(fileName).data.publicUrl;
       }
 
-      // 2. Crear Centro 
+      // 3. Crear Centro en estado PENDIENTE
       const { data: centerData, error: centerError } = await supabase.from('centers').insert({
         owner_id: user.id, 
         name: centerName, 
@@ -123,7 +119,7 @@ export default function BecomeCenterScreen() {
 
       if (centerError) throw centerError;
 
-      // 3. Subir Servicios con Imágenes
+      // 4. Subir Servicios con Imágenes
       const validServices = services.filter(s => s.name && s.duration && s.price);
       if (validServices.length > 0) {
         const servicesToInsert = [];
@@ -142,6 +138,7 @@ export default function BecomeCenterScreen() {
           servicesToInsert.push({
             center_id: centerData.id,
             name: service.name,
+            description: '', // Se deja vacío por defecto, el admin puede editarlo después
             duration_min: parseInt(service.duration, 10),
             price: parseFloat(service.price),
             image_url: imageUrl,
@@ -151,11 +148,7 @@ export default function BecomeCenterScreen() {
         if (servicesError) throw servicesError;
       }
 
-      // 4. Actualizar metadata de Supabase (role)
-      await supabase.auth.updateUser({ data: { role: 'center_owner' } });
-      
-
-      Alert.alert('¡Solicitud enviada!', 'Tu centro ha sido registrado y está en revisión.', [
+      Alert.alert('¡Solicitud enviada!', 'Tu centro ha sido registrado y está en revisión. Se te notificará cuando seas aprobado.', [
         { text: 'Finalizar', onPress: () => router.replace('/(tabs)') }
       ]);
 

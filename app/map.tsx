@@ -15,47 +15,64 @@ export default function MapScreen() {
   const [centers, setCenters] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCenter, setSelectedCenter] = useState<any | null>(null);
+  
+  // Coordenadas por defecto (Centro de La Paz, Bolivia)
   const [region, setRegion] = useState({
-    // Coordenadas base por defecto: La Paz, Bolivia
-    latitude: -16.4897,
-    longitude: -68.1193,
+    latitude: -16.4958,
+    longitude: -68.1335,
     latitudeDelta: 0.05,
     longitudeDelta: 0.05,
   });
 
   useEffect(() => {
-    (async () => {
-      // 1. Obtener ubicación del usuario para centrar el mapa
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        let location = await Location.getCurrentPositionAsync({});
-        setRegion(prev => ({
-          ...prev,
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-        }));
-      }
+    // Función 1: Traer los centros SIEMPRE, sin importar el GPS
+    const fetchCenters = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('centers')
+          .select('*')
+          .eq('status', 'approved')
+          .not('latitude', 'is', null)
+          .not('longitude', 'is', null);
 
-      // 2. Traer los centros de Supabase que tengan coordenadas
-      const { data, error } = await supabase
-        .from('centers')
-        .select('*')
-        .eq('status', 'approved')
-        .not('latitude', 'is', null)
-        .not('longitude', 'is', null);
-
-      if (!error && data) {
-        setCenters(data);
+        if (!error && data) {
+          setCenters(data);
+        }
+      } catch (error) {
+        console.error('Error cargando centros en el mapa:', error);
+      } finally {
+        setLoading(false); // Siempre quitamos el loading al terminar de buscar en Supabase
       }
-      setLoading(false);
-    })();
+    };
+
+    // Función 2: Intentar obtener el GPS del usuario sin bloquear la app
+    const getUserLocation = async () => {
+      try {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          // Usamos accuracy "Balanced" para que sea más rápido y no se cuelgue
+          let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          setRegion(prev => ({
+            ...prev,
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          }));
+        }
+      } catch (error) {
+        console.log('No se pudo obtener la ubicación rápida del usuario, usando La Paz por defecto.');
+      }
+    };
+
+    // Ejecutamos ambas de forma independiente
+    fetchCenters();
+    getUserLocation();
   }, []);
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={AuraColors.primary} />
-        <Text style={{ marginTop: 12, color: AuraColors.textSecondary }}>Cargando mapa...</Text>
+        <Text style={{ marginTop: 12, color: AuraColors.textSecondary, fontWeight: '600' }}>Cargando centros cercanos...</Text>
       </View>
     );
   }
@@ -65,24 +82,31 @@ export default function MapScreen() {
       {/* MAPA NATIVO */}
       <MapView 
         style={styles.map} 
-        initialRegion={region}
+        region={region} // Usamos region en lugar de initialRegion para que se actualice si el GPS llega tarde
         showsUserLocation={true}
         showsMyLocationButton={true}
       >
-        {centers.map((center) => (
-          <Marker
-            key={center.id}
-            coordinate={{ latitude: parseFloat(center.latitude), longitude: parseFloat(center.longitude) }}
-            onPress={() => setSelectedCenter(center)}
-          >
-            <View style={styles.markerContainer}>
-              <View style={styles.markerCircle}>
-                <Feather name="scissors" size={16} color="white" />
+        {centers.map((center) => {
+          // Doble validación para asegurar que las coordenadas existan y sean válidas
+          const lat = parseFloat(center.latitude);
+          const lon = parseFloat(center.longitude);
+          if (isNaN(lat) || isNaN(lon)) return null;
+
+          return (
+            <Marker
+              key={center.id}
+              coordinate={{ latitude: lat, longitude: lon }}
+              onPress={() => setSelectedCenter(center)}
+            >
+              <View style={styles.markerContainer}>
+                <View style={styles.markerCircle}>
+                  <Feather name="briefcase" size={16} color="white" />
+                </View>
+                <View style={styles.markerTriangle} />
               </View>
-              <View style={styles.markerTriangle} />
-            </View>
-          </Marker>
-        ))}
+            </Marker>
+          );
+        })}
       </MapView>
 
       {/* BOTÓN DE RETROCESO FLOTANTE */}
@@ -92,7 +116,7 @@ export default function MapScreen() {
         </TouchableOpacity>
       </SafeAreaView>
 
-      {/* TARJETA FLOTANTE (Aparece cuando tocas un pin) */}
+      {/* TARJETA FLOTANTE AL TOCAR UN PIN */}
       {selectedCenter && (
         <View style={styles.bottomCardContainer}>
           <TouchableOpacity 
@@ -134,13 +158,9 @@ const styles = StyleSheet.create({
   map: { width: '100%', height: '100%' },
   headerAbsolute: { position: 'absolute', top: 0, left: 24, zIndex: 10 },
   backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 5, marginTop: 16 },
-  
-  // Diseño del Pin personalizado en el mapa
   markerContainer: { alignItems: 'center', justifyContent: 'center' },
   markerCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: AuraColors.primary, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3, elevation: 4 },
   markerTriangle: { width: 0, height: 0, backgroundColor: 'transparent', borderStyle: 'solid', borderLeftWidth: 6, borderRightWidth: 6, borderBottomWidth: 10, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: AuraColors.primary, transform: [{ rotate: '180deg' }], marginTop: -2 },
-
-  // Tarjeta interactiva
   bottomCardContainer: { position: 'absolute', bottom: 40, left: 0, right: 0, alignItems: 'center' },
   centerCard: { width: width * 0.9, backgroundColor: 'white', borderRadius: 20, flexDirection: 'row', padding: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
   closeCardBtn: { position: 'absolute', top: 8, right: 8, zIndex: 5, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 12, padding: 4 },
