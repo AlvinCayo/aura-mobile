@@ -38,7 +38,7 @@ export default function AdminAppointmentsScreen() {
       let query = supabase
         .from('appointments')
         .select(`
-          id, appointment_date, start_time, status,
+          id, appointment_date, start_time, status, payment_preference,
           profiles:client_id (full_name, phone),
           services:service_id (name, price)
         `)
@@ -146,6 +146,19 @@ export default function AdminAppointmentsScreen() {
         
         {item.status === 'approved' && (
           <Text style={{color: '#D97706', textAlign: 'center', fontStyle: 'italic', marginTop: 8}}>Esperando pago de seña del cliente...</Text>
+        )}
+        {item.status === 'paid' && (
+          <View style={{ marginTop: 16, backgroundColor: '#F0FDF4', padding: 14, borderRadius: 10, borderWidth: 1, borderColor: '#BBF7D0', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+             <View style={{backgroundColor: '#16A34A', padding: 6, borderRadius: 20}}>
+               <Feather name="check" size={16} color="white" />
+             </View>
+             <View style={{flex: 1}}>
+               <Text style={{color: '#166534', fontWeight: '800', fontSize: 14}}>Cita 100% Confirmada</Text>
+               <Text style={{color: '#15803D', fontSize: 13, marginTop: 4, lineHeight: 18}}>
+                 Cobrarás <Text style={{fontWeight: '700'}}>{parseFloat(price).toFixed(2)} Bs</Text> en el local mediante: <Text style={{fontWeight: '700', textTransform: 'uppercase'}}>{item.payment_preference === 'qr' ? 'Tu código QR' : 'Efectivo'}</Text>
+               </Text>
+             </View>
+          </View>
         )}
       </View>
     );

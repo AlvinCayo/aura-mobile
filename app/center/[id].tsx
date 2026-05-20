@@ -137,6 +137,18 @@ export default function CenterProfileScreen() {
   }
 };
 
+const openNavigation = () => {
+  const lat = center.latitude;
+  const lng = center.longitude;
+  const url = Platform.select({
+    ios: `maps://app?daddr=${lat},${lng}`,
+    android: `google.navigation:q=${lat},${lng}`,
+  });
+  Linking.openURL(url!).catch(() => 
+    Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`)
+  );
+};
+
   if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={AuraColors.primary} /></View>;
 
   return (

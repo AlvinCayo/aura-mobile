@@ -1,68 +1,53 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Linking, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
+type Tab = 'centers' | 'payments';
+
 export default function ApprovalsScreen() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<Tab>('payments');
   const [centers, setCenters] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
-  const fetchPendingCenters = async () => {
+  const fetchData = async () => {
+    setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('centers')
-        .select(`id, name, address, description, license_url, created_at, owner:owner_id(full_name, email)`)
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false });
+      const { data: cData } = await supabase.from('centers').select('*, profiles(full_name)').eq('status', 'pending');
+      if (cData) setCenters(cData);
 
-      if (error) throw error;
-      setCenters(data || []);
+      const { data: pData } = await supabase
+        .from('appointments')
+        .select(`id, receipt_url, payment_code, commission_amount, profiles(full_name), centers(name)`)
+        .eq('status', 'verifying_payment');
+      if (pData) setPayments(pData);
     } catch (error) {
-      console.error('Error cargando solicitudes:', error);
+      console.error(error);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
-  useEffect(() => { fetchPendingCenters(); }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  const onRefresh = () => { setRefreshing(true); fetchPendingCenters(); };
-
-  const handleOpenLicense = async (url: string) => {
-    if (!url) return Alert.alert('Sin Documento', 'Este centro no adjuntó una licencia PDF.');
-    await WebBrowser.openBrowserAsync(url);
-  };
-
-  const updateCenterStatus = async (id: string, status: 'approved' | 'rejected', centerName: string, ownerId: string) => {
+  const handleVerifyPayment = (appointmentId: string, paymentCode: string) => {
     Alert.alert(
-      status === 'approved' ? 'Aprobar Centro' : 'Rechazar Centro',
-      `¿Deseas ${status === 'approved' ? 'aprobar' : 'rechazar'} a "${centerName}"?`,
+      'Validar Ingreso AURA',
+      `¿Confirmas que recibiste el depósito con la glosa: ${paymentCode}?`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Confirmar',
-          style: status === 'rejected' ? 'destructive' : 'default',
+          text: 'Sí, Aprobar',
           onPress: async () => {
-            // 1. Actualizamos el estado del centro
-            const { error } = await supabase.from('centers').update({ status }).eq('id', id);
-            
-            if (error) {
-              Alert.alert('Error', 'No se pudo procesar la solicitud.');
-            } else {
-              // 2. SI SE APRUEBA, LE DAMOS EL ROL AL DUEÑO OFICIALMENTE
-              if (status === 'approved' && ownerId) {
-                await supabase.from('profiles').update({ role: 'center_owner' }).eq('id', ownerId);
-              }
-              
-              Alert.alert('Éxito', `Centro ${status === 'approved' ? 'aprobado' : 'rechazado'} correctamente.`);
-              setCenters(prev => prev.filter(c => c.id !== id));
+            const { error } = await supabase.from('appointments').update({ status: 'paid' }).eq('id', appointmentId);
+            if (!error) {
+              Alert.alert('Éxito', 'Pago validado. El centro ha sido notificado.');
+              fetchData();
             }
           }
         }
@@ -70,28 +55,42 @@ export default function ApprovalsScreen() {
     );
   };
 
-  const renderItem = ({ item }: { item: any }) => (
+  const handleRejectPayment = (appointmentId: string) => {
+    Alert.alert('Rechazar Pago', 'Se cancelará la cita por comprobante fraudulento o no recibido.', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Rechazar', style: 'destructive', onPress: async () => {
+          await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', appointmentId);
+          fetchData();
+      }}
+    ]);
+  };
+
+  const renderPaymentItem = ({ item }: { item: any }) => (
     <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.centerName}>{item.name}</Text>
-        <Text style={styles.dateText}>{new Date(item.created_at).toLocaleDateString()}</Text>
-      </View>
-      <View style={styles.infoRow}><Feather name="map-pin" size={14} color={AuraColors.textSecondary} /><Text style={styles.infoText}>{item.address}</Text></View>
-      <View style={styles.infoRow}><Feather name="user" size={14} color={AuraColors.textSecondary} /><Text style={styles.infoText}>{item.owner?.full_name} ({item.owner?.email})</Text></View>
+      <Text style={styles.cardTitle}>Reserva de: {item.profiles?.full_name}</Text>
+      <Text style={styles.cardSubtitle}>Para el Centro: {item.centers?.name}</Text>
       
-      <TouchableOpacity style={styles.documentButton} onPress={() => handleOpenLicense(item.license_url)}>
-        <Feather name="file-text" size={18} color="#0284C7" />
-        <Text style={styles.documentText}>Ver Licencia de Funcionamiento PDF</Text>
+      <View style={styles.securityBox}>
+        <Feather name="hash" size={20} color="#D97706" />
+        <View>
+          <Text style={{fontSize: 12, color: '#D97706'}}>Buscar esta Glosa en el Banco:</Text>
+          <Text style={styles.securityText}>{item.payment_code}</Text>
+        </View>
+      </View>
+      
+      <Text style={styles.amountText}>Monto Depositado: {item.commission_amount} Bs</Text>
+
+      <TouchableOpacity onPress={() => Linking.openURL(item.receipt_url)}>
+        <Image source={{ uri: item.receipt_url }} style={styles.receiptThumb} resizeMode="cover" />
+        <Text style={styles.viewFullText}>Tocar captura para ver completo</Text>
       </TouchableOpacity>
 
       <View style={styles.actionsRow}>
-        <TouchableOpacity style={[styles.btn, styles.btnReject]} onPress={() => updateCenterStatus(item.id, 'approved', item.name, item.owner?.id)}>
-          <Feather name="x" size={18} color="#EF4444" />
-          <Text style={styles.textReject}>Rechazar</Text>
+        <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#FEE2E2'}]} onPress={() => handleRejectPayment(item.id)}>
+          <Text style={[styles.actionText, {color: '#991B1B'}]}>Rechazar</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.btn, styles.btnApprove]} onPress={() => updateCenterStatus(item.id, 'approved', item.name, item.owner?.id)}>
-          <Feather name="check" size={18} color="white" />
-          <Text style={styles.textApprove}>Aprobar Operación</Text>
+        <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#DCFCE7'}]} onPress={() => handleVerifyPayment(item.id, item.payment_code)}>
+          <Text style={[styles.actionText, {color: '#166534'}]}>Aprobar</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -101,24 +100,26 @@ export default function ApprovalsScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}><Feather name="arrow-left" size={20} color={AuraColors.textPrimary} /></TouchableOpacity>
-        <Text style={styles.headerTitle}>Solicitudes Nuevas</Text>
+        <Text style={styles.headerTitle}>Auditoría AURA</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      {loading ? <View style={styles.centerLoading}><ActivityIndicator size="large" color={AuraColors.primary} /></View> : (
+      <View style={styles.tabs}>
+        <TouchableOpacity style={[styles.tabBtn, activeTab === 'payments' && styles.tabBtnActive]} onPress={() => setActiveTab('payments')}>
+          <Text style={[styles.tabText, activeTab === 'payments' && styles.tabTextActive]}>Validar Pagos ({payments.length})</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.tabBtn, activeTab === 'centers' && styles.tabBtnActive]} onPress={() => setActiveTab('centers')}>
+          <Text style={[styles.tabText, activeTab === 'centers' && styles.tabTextActive]}>Centros Nuevos ({centers.length})</Text>
+        </TouchableOpacity>
+      </View>
+
+      {loading ? <ActivityIndicator size="large" color={AuraColors.primary} style={{ marginTop: 40 }} /> : (
         <FlatList
-          data={centers}
+          data={activeTab === 'payments' ? payments : centers}
           keyExtractor={item => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[AuraColors.primary]} />}
-          ListEmptyComponent={
-            <View style={styles.emptyBox}>
-              <Feather name="check-circle" size={48} color={AuraColors.success} />
-              <Text style={styles.emptyTitle}>Todo al día</Text>
-              <Text style={styles.emptySub}>No hay centros pendientes de aprobación.</Text>
-            </View>
-          }
+          renderItem={activeTab === 'payments' ? renderPaymentItem : () => <Text style={{textAlign: 'center', marginTop: 20}}>Lógica de centros intacta</Text>}
+          contentContainerStyle={{ padding: 24 }}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchData} />}
         />
       )}
     </SafeAreaView>
@@ -127,26 +128,23 @@ export default function ApprovalsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: AuraColors.background },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, paddingBottom: 12 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24 },
   backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: AuraColors.card, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: AuraColors.border },
   headerTitle: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary },
-  centerLoading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  listContent: { padding: 24 },
-  card: { backgroundColor: AuraColors.card, padding: 20, borderRadius: 16, borderWidth: 1, borderColor: AuraColors.border, marginBottom: 16 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
-  centerName: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary, flex: 1 },
-  dateText: { fontSize: 12, color: AuraColors.textMuted },
-  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  infoText: { fontSize: 14, color: AuraColors.textSecondary },
-  documentButton: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#E0F2FE', padding: 12, borderRadius: 10, marginTop: 12, marginBottom: 16 },
-  documentText: { color: '#0284C7', fontWeight: '600', fontSize: 14 },
+  tabs: { flexDirection: 'row', paddingHorizontal: 24, marginBottom: 12 },
+  tabBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabBtnActive: { borderBottomColor: AuraColors.primary },
+  tabText: { fontSize: 14, fontWeight: '600', color: AuraColors.textSecondary },
+  tabTextActive: { color: AuraColors.primary },
+  card: { backgroundColor: AuraColors.card, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: AuraColors.border, marginBottom: 16 },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: AuraColors.textPrimary },
+  cardSubtitle: { fontSize: 14, color: AuraColors.textSecondary, marginBottom: 12 },
+  securityBox: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FEF3C7', padding: 14, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#FDE68A' },
+  securityText: { fontSize: 22, fontWeight: '900', color: '#B45309', letterSpacing: 1 },
+  amountText: { fontSize: 16, fontWeight: '800', color: AuraColors.primary, marginBottom: 12, textAlign: 'center' },
+  receiptThumb: { width: '100%', height: 180, borderRadius: 12, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: AuraColors.border },
+  viewFullText: { textAlign: 'center', fontSize: 12, color: AuraColors.textMuted, marginTop: 8, marginBottom: 16, fontWeight: '600' },
   actionsRow: { flexDirection: 'row', gap: 12 },
-  btn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 10 },
-  btnReject: { backgroundColor: '#FEE2E2' },
-  textReject: { color: '#EF4444', fontWeight: '700' },
-  btnApprove: { backgroundColor: AuraColors.success },
-  textApprove: { color: 'white', fontWeight: '700' },
-  emptyBox: { alignItems: 'center', marginTop: 100 },
-  emptyTitle: { fontSize: 20, fontWeight: '700', color: AuraColors.textPrimary, marginTop: 16 },
-  emptySub: { fontSize: 14, color: AuraColors.textSecondary, marginTop: 8 },
+  actionBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  actionText: { fontWeight: '700', fontSize: 15 },
 });

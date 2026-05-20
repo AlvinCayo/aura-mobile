@@ -71,37 +71,30 @@ export default function BecomeCenterScreen() {
     }
   };
 
-  const handleContinue = async () => {
+const handleContinue = async () => {
     if (step < 3) {
       setStep(step + 1);
       return;
     }
-
     if (!user) return Alert.alert('Error', 'Debes iniciar sesión primero.');
-
     setIsSubmitting(true);
 
     try {
-      // 1. BLINDAJE CORREGIDO: Buscamos si el perfil existe pacíficamente
-      const { data: existingProfile, error: searchError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('id', user.id)
-        .maybeSingle();
+      // 1. BLINDAJE CONTRA GOOGLE LOGIN: Verificación pacífica
+      const { data: existingProfile } = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle();
 
-      // Si no existe, lo insertamos. (Evitamos usar upsert)
       if (!existingProfile) {
+        const fallbackEmail = user.email || `${user.id.substring(0,8)}@aura-user.com`;
+        const fallbackName = user.user_metadata?.full_name || user.user_metadata?.name || 'Usuario Google';
+        
         const { error: insertError } = await supabase.from('profiles').insert([{
           id: user.id,
-          email: user.email,
+          email: fallbackEmail,
           role: 'client',
-          full_name: user.user_metadata?.full_name || 'Usuario'
+          full_name: fallbackName
         }]);
 
-        if (insertError) {
-          console.error("Error al insertar perfil:", insertError);
-          throw new Error("No se pudo registrar tu perfil base de usuario.");
-        }
+        if (insertError) throw new Error(`No se pudo registrar tu perfil base. ${insertError.message}`);
       }
 
       // 2. Subir Licencia
@@ -126,9 +119,9 @@ export default function BecomeCenterScreen() {
         payment_qr_url: '' 
       }).select('id').single();
 
-      if (centerError) throw centerError;
+      if (centerError) throw new Error(`Error al crear centro: ${centerError.message}`);
 
-      // 4. Subir Servicios con Imágenes
+      // 4. Subir Servicios
       const validServices = services.filter(s => s.name && s.duration && s.price);
       if (validServices.length > 0) {
         const servicesToInsert = [];
@@ -156,12 +149,11 @@ export default function BecomeCenterScreen() {
         if (servicesError) throw servicesError;
       }
 
-      Alert.alert('¡Solicitud enviada!', 'Tu centro ha sido registrado y está en revisión. Se te notificará cuando seas aprobado.', [
+      Alert.alert('¡Solicitud enviada!', 'Tu centro está en revisión.', [
         { text: 'Finalizar', onPress: () => router.replace('/(tabs)') }
       ]);
 
     } catch (error: any) {
-      console.error(error);
       Alert.alert('Error', error.message || 'Ocurrió un error inesperado al guardar.');
     } finally {
       setIsSubmitting(false);
