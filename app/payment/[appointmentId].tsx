@@ -13,6 +13,7 @@ export default function PaymentScreen() {
   const { appointmentId } = useLocalSearchParams<{ appointmentId: string }>();
   const router = useRouter();
   const { user } = useAuth();
+  const [auraQr, setAuraQr] = useState('');
 
   const [appointment, setAppointment] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -40,6 +41,14 @@ export default function PaymentScreen() {
     };
     fetchAppointmentDetails();
   }, [appointmentId]);
+
+  useEffect(() => {
+  const getPlatformQr = async () => {
+    const { data } = await supabase.from('platform_config').select('value').eq('key', 'platform_qr_url').single();
+    if (data) setAuraQr(data.value);
+  };
+  getPlatformQr();
+}, []);
 
   // Cálculos de Negocio (+10% Adicional)
   const servicePrice = parseFloat(appointment?.service?.price || '0');
@@ -133,7 +142,7 @@ export default function PaymentScreen() {
         <Text style={styles.instructionTitle}>1. Realiza el Pago</Text>
         <Text style={styles.instructionDesc}>Transfiere <Text style={{fontWeight: '700', color: AuraColors.primary}}>{platformFee.toFixed(2)} Bs</Text> a este QR oficial de AURA.</Text>
         <View style={styles.qrContainer}>
-           <Image source={{ uri: auraPlatformQR }} style={styles.qrImage} resizeMode="contain" />
+           <Image source={{ uri: auraQr }} style={styles.qrImage} resizeMode="contain" />
         </View>
 
         <View style={styles.securityBox}>

@@ -18,9 +18,14 @@ export default function ApprovalsScreen() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const { data: cData } = await supabase.from('centers').select('*, profiles(full_name)').eq('status', 'pending');
+      // Centros pendientes: traemos nombre, propietario y licencia
+      const { data: cData } = await supabase
+        .from('centers')
+        .select('*, profiles(full_name)')
+        .eq('status', 'pending');
       if (cData) setCenters(cData);
 
+      // Pagos pendientes
       const { data: pData } = await supabase
         .from('appointments')
         .select(`id, receipt_url, payment_code, commission_amount, profiles(full_name), centers(name)`)
@@ -35,28 +40,20 @@ export default function ApprovalsScreen() {
 
   useEffect(() => { fetchData(); }, []);
 
+  // --- LÓGICA DE PAGOS ---
   const handleVerifyPayment = (appointmentId: string, paymentCode: string) => {
-    Alert.alert(
-      'Validar Ingreso AURA',
-      `¿Confirmas que recibiste el depósito con la glosa: ${paymentCode}?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Sí, Aprobar',
-          onPress: async () => {
-            const { error } = await supabase.from('appointments').update({ status: 'paid' }).eq('id', appointmentId);
-            if (!error) {
-              Alert.alert('Éxito', 'Pago validado. El centro ha sido notificado.');
-              fetchData();
-            }
-          }
+    Alert.alert('Validar Ingreso AURA', `¿Confirmas que recibiste el depósito con la glosa: ${paymentCode}?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Sí, Aprobar', onPress: async () => {
+          const { error } = await supabase.from('appointments').update({ status: 'paid' }).eq('id', appointmentId);
+          if (!error) { Alert.alert('Éxito', 'Pago validado.'); fetchData(); }
         }
-      ]
-    );
+      }
+    ]);
   };
 
   const handleRejectPayment = (appointmentId: string) => {
-    Alert.alert('Rechazar Pago', 'Se cancelará la cita por comprobante fraudulento o no recibido.', [
+    Alert.alert('Rechazar Pago', 'Se cancelará la cita.', [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Rechazar', style: 'destructive', onPress: async () => {
           await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', appointmentId);
@@ -65,33 +62,55 @@ export default function ApprovalsScreen() {
     ]);
   };
 
+  // --- LÓGICA DE CENTROS NUEVOS ---
+  const handleApproveCenter = async (centerId: string) => {
+    await supabase.from('centers').update({ status: 'approved' }).eq('id', centerId);
+    Alert.alert('Éxito', 'Centro aprobado y publicado.');
+    fetchData();
+  };
+
+  const handleRejectCenter = async (centerId: string) => {
+    await supabase.from('centers').update({ status: 'rejected' }).eq('id', centerId);
+    Alert.alert('Aviso', 'Centro rechazado.');
+    fetchData();
+  };
+
   const renderPaymentItem = ({ item }: { item: any }) => (
     <View style={styles.card}>
       <Text style={styles.cardTitle}>Reserva de: {item.profiles?.full_name}</Text>
-      <Text style={styles.cardSubtitle}>Para el Centro: {item.centers?.name}</Text>
-      
+      <Text style={styles.cardSubtitle}>Para: {item.centers?.name}</Text>
       <View style={styles.securityBox}>
         <Feather name="hash" size={20} color="#D97706" />
         <View>
-          <Text style={{fontSize: 12, color: '#D97706'}}>Buscar esta Glosa en el Banco:</Text>
+          <Text style={{fontSize: 12, color: '#D97706'}}>Glosa bancaria:</Text>
           <Text style={styles.securityText}>{item.payment_code}</Text>
         </View>
       </View>
-      
-      <Text style={styles.amountText}>Monto Depositado: {item.commission_amount} Bs</Text>
-
+      <Text style={styles.amountText}>Monto: {item.commission_amount} Bs</Text>
       <TouchableOpacity onPress={() => Linking.openURL(item.receipt_url)}>
         <Image source={{ uri: item.receipt_url }} style={styles.receiptThumb} resizeMode="cover" />
-        <Text style={styles.viewFullText}>Tocar captura para ver completo</Text>
+        <Text style={styles.viewFullText}>Ver comprobante</Text>
+      </TouchableOpacity>
+      <View style={styles.actionsRow}>
+        <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#FEE2E2'}]} onPress={() => handleRejectPayment(item.id)}><Text style={{color: '#991B1B', fontWeight:'700'}}>Rechazar</Text></TouchableOpacity>
+        <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#DCFCE7'}]} onPress={() => handleVerifyPayment(item.id, item.payment_code)}><Text style={{color: '#166534', fontWeight:'700'}}>Aprobar</Text></TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  const renderCenterItem = ({ item }: { item: any }) => (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>{item.name}</Text>
+      <Text style={styles.cardSubtitle}>Dueño: {item.profiles?.full_name || 'Desconocido'}</Text>
+      
+      <TouchableOpacity style={styles.licenseBtn} onPress={() => Linking.openURL(item.license_url)}>
+        <Feather name="file-text" size={16} color={AuraColors.primary} />
+        <Text style={{color: AuraColors.primary, marginLeft: 8, fontWeight: '600'}}>Ver Licencia de Funcionamiento</Text>
       </TouchableOpacity>
 
       <View style={styles.actionsRow}>
-        <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#FEE2E2'}]} onPress={() => handleRejectPayment(item.id)}>
-          <Text style={[styles.actionText, {color: '#991B1B'}]}>Rechazar</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#DCFCE7'}]} onPress={() => handleVerifyPayment(item.id, item.payment_code)}>
-          <Text style={[styles.actionText, {color: '#166534'}]}>Aprobar</Text>
-        </TouchableOpacity>
+        <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#FEE2E2'}]} onPress={() => handleRejectCenter(item.id)}><Text style={{color: '#991B1B', fontWeight:'700'}}>Rechazar</Text></TouchableOpacity>
+        <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#DCFCE7'}]} onPress={() => handleApproveCenter(item.id)}><Text style={{color: '#166534', fontWeight:'700'}}>Aprobar</Text></TouchableOpacity>
       </View>
     </View>
   );
@@ -117,7 +136,7 @@ export default function ApprovalsScreen() {
         <FlatList
           data={activeTab === 'payments' ? payments : centers}
           keyExtractor={item => item.id}
-          renderItem={activeTab === 'payments' ? renderPaymentItem : () => <Text style={{textAlign: 'center', marginTop: 20}}>Lógica de centros intacta</Text>}
+          renderItem={activeTab === 'payments' ? renderPaymentItem : renderCenterItem}
           contentContainerStyle={{ padding: 24 }}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchData} />}
         />
@@ -144,6 +163,7 @@ const styles = StyleSheet.create({
   amountText: { fontSize: 16, fontWeight: '800', color: AuraColors.primary, marginBottom: 12, textAlign: 'center' },
   receiptThumb: { width: '100%', height: 180, borderRadius: 12, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: AuraColors.border },
   viewFullText: { textAlign: 'center', fontSize: 12, color: AuraColors.textMuted, marginTop: 8, marginBottom: 16, fontWeight: '600' },
+  licenseBtn: { flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: AuraColors.primaryLight, borderRadius: 8, marginBottom: 16 },
   actionsRow: { flexDirection: 'row', gap: 12 },
   actionBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
   actionText: { fontWeight: '700', fontSize: 15 },

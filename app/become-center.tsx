@@ -49,7 +49,7 @@ export default function BecomeCenterScreen() {
   const pickLicense = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
-      if (!result.canceled && result.assets && result.assets.length > 0) {
+      if (result.assets && result.assets.length > 0) {
         setLicenseFile(result.assets[0]);
       }
     } catch (err) {
