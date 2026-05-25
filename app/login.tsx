@@ -4,6 +4,7 @@ import * as WebBrowser from 'expo-web-browser';
 import React, { useState } from 'react';
 import {
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -132,8 +133,10 @@ export default function LoginScreen() {
         >
           <View style={styles.logoSection}>
             <View style={styles.logoCircle}>
-              <Feather name={'sparkles' as any} size={28} color={AuraColors.primary} />
-            </View>
+            <Image source={require('../assets/images/icon.png')} // 2. Ruta a tu archivo
+            style={{ width: 72, height: 72 }} // Ajusta el tamaño
+            resizeMode="contain"/>
+          </View>
             <Text style={styles.appName}>AURA</Text>
             <Text style={styles.tagline}>Bienestar & Estética</Text>
           </View>

@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AuraColors } from '../src/theme/colors';
 
@@ -52,7 +52,11 @@ export default function OnboardingScreen() {
 
       <View style={styles.content}>
         <View style={styles.iconContainer}>
-          <Feather name={SLIDES[currentStep].icon as any} size={52} color={AuraColors.primary} />
+          <Image 
+            source={require('../assets/images/icon.png')} // Pon aquí la ruta real de tu archivo
+            style={{ width: 130, height: 130 }} 
+            resizeMode="contain" 
+          />
         </View>
 
         <View style={styles.dotsContainer}>
