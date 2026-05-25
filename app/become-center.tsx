@@ -71,7 +71,7 @@ export default function BecomeCenterScreen() {
     }
   };
 
-const handleContinue = async () => {
+  const handleContinue = async () => {
     if (step < 3) {
       setStep(step + 1);
       return;
@@ -80,7 +80,7 @@ const handleContinue = async () => {
     setIsSubmitting(true);
 
     try {
-      // 1. BLINDAJE CONTRA GOOGLE LOGIN: Verificación pacífica
+      // 1. BLINDAJE CONTRA GOOGLE LOGIN Y ACTUALIZACIÓN DE ROL
       const { data: existingProfile } = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle();
 
       if (!existingProfile) {
@@ -90,11 +90,15 @@ const handleContinue = async () => {
         const { error: insertError } = await supabase.from('profiles').insert([{
           id: user.id,
           email: fallbackEmail,
-          role: 'client',
+          role: 'center_owner', // <-- AQUÍ USAMOS EL ROL EXACTO DE TU BASE DE DATOS
           full_name: fallbackName
         }]);
 
         if (insertError) throw new Error(`No se pudo registrar tu perfil base. ${insertError.message}`);
+      } else {
+        // ACTUALIZAMOS AL USUARIO EXISTENTE
+        const { error: updateError } = await supabase.from('profiles').update({ role: 'center_owner' }).eq('id', user.id); // <-- AQUÍ TAMBIÉN
+        if (updateError) throw new Error(`No se pudo actualizar tu rol a dueño. ${updateError.message}`);
       }
 
       // 2. Subir Licencia

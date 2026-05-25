@@ -48,7 +48,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           await supabase.from('profiles').insert([{ 
             id: currentUser.id, 
             email: currentUser.email, 
-            role: 'client',
+            role: 'user',
             full_name: currentUser.user_metadata?.full_name || 'Usuario AURA' 
           }]);
         }

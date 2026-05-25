@@ -13,7 +13,6 @@ export default function FacialAnalysisScreen() {
 
   const handleScan = () => {
     setScanning(true);
-    // Simulamos un análisis de IA de 3 segundos
     setTimeout(() => {
       setScanning(false);
       setResult(true);
@@ -83,18 +82,23 @@ export default function FacialAnalysisScreen() {
                 <Feather name="check-circle" size={14} color={AuraColors.primary} />
                 <Text style={styles.recText}>Evita flequillos pesados que oculten tus ojos.</Text>
               </View>
-              <View style={styles.recBullet}>
-                <Feather name="check-circle" size={14} color={AuraColors.primary} />
-                <Text style={styles.recText}>Perfilado de barba estilo 'Candado' o 'Stubble'.</Text>
-              </View>
             </View>
+
+            {/* Nuevo botón que conecta con el simulador de IA */}
+            <Button 
+              title="Generar Simulación Visual IA" 
+              onPress={() => router.push('/ar-simulation')} 
+              style={{ width: '100%', marginBottom: 12 }}
+              icon={<Feather name="image" size={18} color="white" />}
+            />
 
             <View style={styles.actionRowContainer}>
               <Button 
-                title="Buscar Especialistas" 
+                title="Buscar Centros" 
                 onPress={() => router.push('/search')} 
                 style={styles.flexButton}
-                icon={<Feather name="search" size={18} color="white" />}
+                variant="outline"
+                icon={<Feather name="search" size={18} color={AuraColors.primary} />}
               />
               <Button 
                 title="Reintentar" 
@@ -134,7 +138,7 @@ const styles = StyleSheet.create({
   resultTitle: { fontSize: 22, fontWeight: '800', color: AuraColors.textPrimary, marginBottom: 8, textAlign: 'center' },
   resultDesc: { fontSize: 14, color: AuraColors.textSecondary, textAlign: 'center', marginBottom: 24, lineHeight: 22 },
   
-  recommendationCard: { width: '100%', backgroundColor: '#FEF3C7', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#FDE68A', marginBottom: 32 },
+  recommendationCard: { width: '100%', backgroundColor: '#FEF3C7', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#FDE68A', marginBottom: 24 },
   recHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
   recTitle: { fontSize: 16, fontWeight: '800', color: '#B45309' },
   recBullet: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 12 },

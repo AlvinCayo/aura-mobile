@@ -141,7 +141,7 @@ export default function LoginScreen() {
             <Text style={styles.tagline}>Bienestar & Estética</Text>
           </View>
 
-          <Text style={styles.title}>Bienvenido de vuelta</Text>
+          <Text style={styles.title}>Bienvenido nuevamente</Text>
           <Text style={styles.subtitle}>Inicia sesión para continuar</Text>
 
           <View style={styles.socialRow}>

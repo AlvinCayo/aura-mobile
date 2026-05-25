@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Button from '../../src/components/ui/Button'; // IMPORTACIÓN DEL BOTÓN AÑADIDA
 import CategoryCard from '../../src/components/ui/CategoryCard';
 import CenterCard from '../../src/components/ui/CenterCard';
 import { useAuth } from '../../src/contexts/AuthContext';
@@ -79,13 +80,36 @@ export default function HomeScreen() {
               <Text style={styles.searchBarPlaceholder}>Buscar centros, servicios...</Text>
             </TouchableOpacity>
 
+            {/* ================= SECCIÓN DEL BANNER IA (AÑADIDA) ================= */}
+            <View style={styles.iaBanner}>
+              <View style={styles.iaInfo}>
+                <View style={styles.iaIconBox}>
+                  <Feather name="zap" size={20} color={AuraColors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.iaTitle}>¿No sabes qué estilo elegir?</Text>
+                  <Text style={styles.iaDesc}>
+                    Usa nuestro escáner visagista para descubrir los cortes que mejor van con tu rostro.
+                  </Text>
+                </View>
+              </View>
+              
+              <Button 
+                title="Análisis Facial con IA" 
+                onPress={() => router.push('/facial-analysis')} 
+                icon={<Feather name="aperture" size={18} color="white" />}
+                style={styles.iaButton}
+              />
+            </View>
+            {/* ==================================================================== */}
+
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Categorías</Text>
             </View>
             <View style={styles.categoriesGrid}>
               {CATEGORIES.map((cat) => (
                 // CORRECCIÓN: Se usa 'label' en lugar de 'title'
-                <CategoryCard key={cat.id} label={cat.name} icon={cat.icon} onPress={() => router.push('/search')} />
+                <CategoryCard key={cat.id} label={cat.name} icon={cat.icon as any} onPress={() => router.push('/search')} />
               ))}
             </View>
 
@@ -140,4 +164,33 @@ const styles = StyleSheet.create({
   categoriesGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 24, gap: 12, marginBottom: 32 },
   centersList: { paddingHorizontal: 24, gap: 16, paddingBottom: 40 },
   emptyText: { textAlign: 'center', color: AuraColors.textMuted, fontStyle: 'italic', marginTop: 20 },
+  
+  // ======== ESTILOS AÑADIDOS PARA EL BANNER IA ========
+  iaBanner: {
+    backgroundColor: AuraColors.card,
+    borderWidth: 1,
+    borderColor: AuraColors.border,
+    borderRadius: 24,
+    padding: 20,
+    marginHorizontal: 24, // Para alinearlo con los demás elementos
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  iaInfo: { flexDirection: 'row', gap: 14, marginBottom: 16, alignItems: 'center' },
+  iaIconBox: { 
+    width: 40, 
+    height: 40, 
+    borderRadius: 12, 
+    backgroundColor: AuraColors.primaryLight, 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  iaTitle: { fontSize: 16, fontWeight: '700', color: AuraColors.textPrimary },
+  iaDesc: { fontSize: 13, color: AuraColors.textSecondary, marginTop: 2, lineHeight: 18 },
+  iaButton: { width: '100%' }
+  // ====================================================
 });
