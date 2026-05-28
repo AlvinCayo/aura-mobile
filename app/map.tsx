@@ -16,52 +16,70 @@ export default function MapScreen() {
   const [loading, setLoading] = useState(true);
   const [selectedCenter, setSelectedCenter] = useState<any | null>(null);
   
-  // Coordenadas por defecto (Centro de La Paz, Bolivia)
+  // Ubicación en vivo del cliente
+  const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null);
+
   const [region, setRegion] = useState({
-    latitude: -16.4958,
+    latitude: -16.4958, // La Paz por defecto
     longitude: -68.1335,
     latitudeDelta: 0.05,
     longitudeDelta: 0.05,
   });
 
   useEffect(() => {
-    const fetchCenters = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('centers')
-          .select('*')
-          .eq('status', 'approved')
-          .not('latitude', 'is', null)
-          .not('longitude', 'is', null);
-
-        if (!error && data) {
-          setCenters(data);
-        }
-      } catch (error) {
-        console.error('Error cargando centros en el mapa:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchCenters();
+    initializeUserLocation(); // Buscar al usuario automáticamente al entrar
   }, []);
 
-  // Función manual para evitar que la aplicación se cierre de golpe al iniciar
+  const fetchCenters = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('centers')
+        .select('*')
+        .eq('status', 'approved')
+        .not('latitude', 'is', null)
+        .not('longitude', 'is', null);
+
+      if (!error && data) setCenters(data);
+    } catch (error) {
+      console.error('Error cargando centros:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const initializeUserLocation = async () => {
+    try {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const coords = {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        };
+        setUserLocation(coords);
+        // Centrar el mapa automáticamente al iniciar
+        setRegion({
+          ...coords,
+          latitudeDelta: 0.03,
+          longitudeDelta: 0.03,
+        });
+      }
+    } catch (error) {
+      console.log('Permiso denegado o GPS apagado');
+    }
+  };
+
   const handleLocateMe = async () => {
     try {
       let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permiso denegado', 'No podemos acceder a tu GPS.');
-        return;
-      }
+      if (status !== 'granted') return Alert.alert('Aviso', 'Permiso de ubicación denegado.');
       
-      let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      setRegion({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        latitudeDelta: 0.02,
-        longitudeDelta: 0.02,
-      });
+      let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      const coords = { latitude: location.coords.latitude, longitude: location.coords.longitude };
+      
+      setUserLocation(coords);
+      setRegion({ ...coords, latitudeDelta: 0.015, longitudeDelta: 0.015 });
     } catch (error) {
       Alert.alert('Error', 'Asegúrate de que tu GPS esté encendido.');
     }
@@ -78,13 +96,23 @@ export default function MapScreen() {
 
   return (
     <View style={styles.container}>
-      {/* MAPA NATIVO BLINDADO: showsUserLocation eliminado para evitar crashes en Android */}
       <MapView 
         style={styles.map} 
         region={region} 
-        showsUserLocation={false} 
+        showsUserLocation={false} // Se mantiene en false por seguridad en Android
         showsMyLocationButton={false}
       >
+        {/* MARCADOR DEL USUARIO (El Punto Azul Personalizado) */}
+        {userLocation && (
+          <Marker coordinate={userLocation} zIndex={999}>
+            <View style={styles.userDotContainer}>
+              <View style={styles.userDotHalo} />
+              <View style={styles.userDotCore} />
+            </View>
+          </Marker>
+        )}
+
+        {/* MARCADORES DE LOS CENTROS */}
         {centers.map((center) => {
           const lat = parseFloat(center.latitude);
           const lon = parseFloat(center.longitude);
@@ -113,12 +141,10 @@ export default function MapScreen() {
         </TouchableOpacity>
       </SafeAreaView>
 
-      {/* BOTÓN FLOTANTE PARA UBICAR AL USUARIO MANUALMENTE */}
       <TouchableOpacity style={styles.locateButton} onPress={handleLocateMe}>
         <Feather name="navigation" size={24} color={AuraColors.primary} />
       </TouchableOpacity>
 
-      {/* TARJETA FLOTANTE AL TOCAR UN PIN */}
       {selectedCenter && (
         <View style={styles.bottomCardContainer}>
           <TouchableOpacity 
@@ -161,9 +187,18 @@ const styles = StyleSheet.create({
   headerAbsolute: { position: 'absolute', top: 0, left: 24, zIndex: 10 },
   backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 5, marginTop: 16 },
   locateButton: { position: 'absolute', top: 60, right: 24, zIndex: 10, width: 50, height: 50, borderRadius: 25, backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 5 },
+  
+  // Estilos del Punto de Usuario
+  userDotContainer: { justifyContent: 'center', alignItems: 'center', width: 40, height: 40 },
+  userDotHalo: { position: 'absolute', width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(59, 130, 246, 0.3)', borderWidth: 1, borderColor: 'rgba(59, 130, 246, 0.5)' },
+  userDotCore: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#2563EB', borderWidth: 2, borderColor: 'white' },
+
+  // Estilos del Pin de los Centros
   markerContainer: { alignItems: 'center', justifyContent: 'center' },
   markerCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: AuraColors.primary, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3, elevation: 4 },
   markerTriangle: { width: 0, height: 0, backgroundColor: 'transparent', borderStyle: 'solid', borderLeftWidth: 6, borderRightWidth: 6, borderBottomWidth: 10, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: AuraColors.primary, transform: [{ rotate: '180deg' }], marginTop: -2 },
+  
+  // Estilos de Tarjeta
   bottomCardContainer: { position: 'absolute', bottom: 40, left: 0, right: 0, alignItems: 'center' },
   centerCard: { width: width * 0.9, backgroundColor: 'white', borderRadius: 20, flexDirection: 'row', padding: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
   closeCardBtn: { position: 'absolute', top: 8, right: 8, zIndex: 5, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 12, padding: 4 },

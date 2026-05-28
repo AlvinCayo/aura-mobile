@@ -15,14 +15,15 @@ export default function AppointmentDetailScreen() {
   
   const [appointment, setAppointment] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [showCenterQR, setShowCenterQR] = useState(false); // Para mostrar el QR del centro al final
+  const [showCenterQR, setShowCenterQR] = useState(false);
 
   const loadDetails = async () => {
     try {
+      // Ajuste de consulta: usamos commission_amount de acuerdo al esquema de BD
       const { data, error } = await supabase
         .from('appointments')
         .select(`
-          id, status, appointment_date, start_time, local_balance_due, reservation_fee,
+          id, status, appointment_date, start_time, commission_amount,
           service:service_id(name, price, duration_min),
           center:center_id(name, address, payment_qr_url, phone)
         `)
@@ -49,15 +50,15 @@ export default function AppointmentDetailScreen() {
   const handlePayBalanceQR = async () => {
     Alert.alert(
       'Confirmar Pago',
-      '¿Ya realizaste la transferencia al código QR del establecimiento?',
+      '¿Ya realizaste la transferencia del servicio al código QR del establecimiento?',
       [
         { text: 'Aún no', style: 'cancel' },
         {
           text: 'Sí, ya pagué',
           onPress: async () => {
             await supabase.from('appointments').update({ status: 'completed' }).eq('id', id);
-            await handleLogAction('BALANCE_PAID_QR', { amount: appointment.local_balance_due });
-            Alert.alert('¡Excelente!', 'El pago ha sido registrado. Gracias por preferir AURA.');
+            await handleLogAction('BALANCE_PAID_QR', { amount: appointment.service.price });
+            Alert.alert('¡Excelente!', 'El servicio ha sido marcado como completado. Gracias por preferir AURA.');
             loadDetails();
             setShowCenterQR(false);
           }
@@ -71,7 +72,8 @@ export default function AppointmentDetailScreen() {
   const getStatusDisplay = () => {
     switch (appointment?.status) {
       case 'pending': return { text: 'En Revisión', color: '#D97706', bg: '#FEF3C7', icon: 'clock' };
-      case 'approved': return { text: 'Pago Requerido', color: '#B91C1C', bg: '#FEE2E2', icon: 'alert-circle' };
+      case 'approved': return { text: 'Pago Requerido (Comisión)', color: '#B91C1C', bg: '#FEE2E2', icon: 'alert-circle' };
+      case 'verifying_payment': return { text: 'Verificando...', color: '#7C3AED', bg: '#F3E8FF', icon: 'loader' };
       case 'paid': return { text: 'Turno Asegurado', color: '#16A34A', bg: '#DCFCE7', icon: 'check-circle' };
       case 'completed': return { text: 'Completada', color: AuraColors.primary, bg: AuraColors.primaryLight, icon: 'star' };
       case 'cancelled': return { text: 'Cancelada', color: '#9CA3AF', bg: '#F3F4F6', icon: 'x-circle' };
@@ -80,7 +82,10 @@ export default function AppointmentDetailScreen() {
   };
 
   const statusInfo = getStatusDisplay();
-  const totalPrice = parseFloat(appointment?.service?.price || '0');
+  const baseServicePrice = parseFloat(appointment?.service?.price || '0');
+  
+  // Si la comisión no está guardada aún, la calculamos temporalmente solo para la UI
+  const commissionCalculated = appointment?.commission_amount ? parseFloat(appointment.commission_amount) : (baseServicePrice * 0.10);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -101,8 +106,9 @@ export default function AppointmentDetailScreen() {
           </View>
           
           {appointment?.status === 'pending' && <Text style={styles.statusMessage}>El centro está revisando su disponibilidad para atenderte.</Text>}
-          {appointment?.status === 'approved' && <Text style={styles.statusMessage}>¡El centro ha aceptado tu turno! Paga la seña de reserva ahora para congelar tu cupo.</Text>}
-          {appointment?.status === 'paid' && <Text style={styles.statusMessage}>Tu reserva está confirmada. El saldo pendiente se paga al centro directamente.</Text>}
+          {appointment?.status === 'approved' && <Text style={styles.statusMessage}>¡El centro ha aceptado tu turno! Paga la comisión de plataforma para confirmar tu reserva.</Text>}
+          {appointment?.status === 'verifying_payment' && <Text style={styles.statusMessage}>El sistema automático está procesando el comprobante de tu comisión.</Text>}
+          {appointment?.status === 'paid' && <Text style={styles.statusMessage}>Tu reserva está confirmada. El costo del servicio se paga al centro el día de tu cita.</Text>}
         </View>
 
         {/* Info del Servicio */}
@@ -118,48 +124,51 @@ export default function AppointmentDetailScreen() {
         <View style={styles.cardBox}>
           <Text style={styles.boxTitle}>Desglose Financiero</Text>
           <View style={styles.financeRow}>
-            <Text style={styles.financeLabel}>Precio Total del Servicio</Text>
-            <Text style={styles.financeValue}>{totalPrice.toFixed(2)} Bs</Text>
+            <Text style={styles.financeLabel}>Precio Base del Servicio</Text>
+            <Text style={styles.financeValue}>{baseServicePrice.toFixed(2)} Bs</Text>
           </View>
+          
+          <View style={styles.financeRow}>
+            <Text style={styles.financeLabel}>Comisión Extra AURA (10%)</Text>
+            <Text style={[styles.financeValue, { color: AuraColors.primary }]}>
+              {appointment?.status !== 'pending' && appointment?.status !== 'approved' ? 'Pagado: ' : 'A pagar: '}
+              {commissionCalculated.toFixed(2)} Bs
+            </Text>
+          </View>
+
           {appointment?.status !== 'pending' && (
-            <>
-              <View style={styles.financeRow}>
-                <Text style={styles.financeLabel}>Seña Pagada a AURA</Text>
-                <Text style={[styles.financeValue, { color: AuraColors.primary }]}>{parseFloat(appointment?.reservation_fee || '0').toFixed(2)} Bs</Text>
-              </View>
-              <View style={[styles.financeRow, { borderTopWidth: 1, borderTopColor: AuraColors.border, paddingTop: 12, marginTop: 4 }]}>
-                <Text style={styles.financeTotalLabel}>Saldo a Pagar al Centro</Text>
-                <Text style={styles.financeTotalValue}>{parseFloat(appointment?.local_balance_due || '0').toFixed(2)} Bs</Text>
-              </View>
-            </>
+            <View style={[styles.financeRow, { borderTopWidth: 1, borderTopColor: AuraColors.border, paddingTop: 12, marginTop: 4 }]}>
+              <Text style={styles.financeTotalLabel}>A Pagar en el Centro</Text>
+              <Text style={styles.financeTotalValue}>{baseServicePrice.toFixed(2)} Bs</Text>
+            </View>
           )}
         </View>
 
         {/* CONTROLES INTERACTIVOS SEGÚN ESTADO */}
         {appointment?.status === 'approved' && (
           <Button 
-            title="Pagar Seña y Confirmar" 
+            title="Pagar Comisión y Confirmar" 
             onPress={() => router.push(`/payment/${id}` as any)} 
-            icon={<Feather name="credit-card" size={18} color="white" />}
+            icon={<Feather name="shield" size={18} color="white" />}
           />
         )}
 
         {appointment?.status === 'paid' && (
           <View style={styles.actionContainer}>
-             <Text style={styles.instructionText}>¿Llegó el día de tu cita? Paga el saldo restante de forma digital o en efectivo en el local.</Text>
+             <Text style={styles.instructionText}>¿Llegó el día de tu cita? Paga el costo del servicio de forma digital o en efectivo en el local.</Text>
              
              {showCenterQR ? (
                 <View style={styles.qrContainer}>
                   <Text style={styles.qrHeader}>QR del Establecimiento</Text>
                   <Image source={{ uri: appointment.center.payment_qr_url }} style={styles.qrImage} />
-                  <Button title="Marcar como Pagado" onPress={handlePayBalanceQR} style={{ marginTop: 16 }} />
+                  <Button title="Marcar como Completado" onPress={handlePayBalanceQR} style={{ marginTop: 16 }} />
                   <Button title="Cancelar" variant="outline" onPress={() => setShowCenterQR(false)} style={{ marginTop: 8 }} />
                 </View>
              ) : (
                 <View style={{ gap: 12 }}>
                   {appointment?.center?.payment_qr_url ? (
                     <Button 
-                      title="Pagar Saldo por QR de la App" 
+                      title="Pagar Servicio por QR" 
                       onPress={() => setShowCenterQR(true)} 
                       icon={<Feather name="smartphone" size={18} color="white" />}
                     />
@@ -169,7 +178,7 @@ export default function AppointmentDetailScreen() {
                   <Button 
                     title="Pagar en Efectivo en el Local" 
                     variant="outline" 
-                    onPress={() => Alert.alert('Aviso', 'El establecimiento confirmará el pago en efectivo.')} 
+                    onPress={() => Alert.alert('Aviso', 'El establecimiento confirmará el pago en efectivo al terminar tu servicio.')} 
                   />
                 </View>
              )}

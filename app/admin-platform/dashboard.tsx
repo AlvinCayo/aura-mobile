@@ -30,12 +30,12 @@ export default function SuperAdminDashboard() {
       // 3. Reportes de Fraude Pendientes
       const { count: pendingReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'pending');
       
-      // 4. Ingresos Totales de AURA (Suma de las señas de reserva pagadas)
-      const { data: appointments } = await supabase.from('appointments').select('reservation_fee').in('status', ['confirmed', 'paid', 'completed']);
+      // 4. Ingresos Totales de AURA (Suma de las comisiones del 10% pagadas)
+      const { data: appointments } = await supabase.from('appointments').select('commission_amount').in('status', ['paid', 'completed']);
       
       let revenue = 0;
       if (appointments) {
-        revenue = appointments.reduce((sum, app) => sum + parseFloat(app.reservation_fee || '0'), 0);
+        revenue = appointments.reduce((sum, app) => sum + parseFloat(app.commission_amount || '0'), 0);
       }
 
       setStats({
@@ -70,7 +70,7 @@ export default function SuperAdminDashboard() {
         
         {/* Gráfico Financiero Simplificado */}
         <View style={styles.revenueCard}>
-          <Text style={styles.revenueTitle}>Ganancias Históricas AURA</Text>
+          <Text style={styles.revenueTitle}>Ganancias Históricas AURA (Comisiones)</Text>
           <Text style={styles.revenueValue}>{stats.totalAuraRevenue.toFixed(2)} Bs</Text>
           <View style={styles.chartContainer}>
             <View style={styles.chartBar}><View style={[styles.chartFill, { height: '40%' }]} /><Text style={styles.chartLabel}>Lun</Text></View>
@@ -118,6 +118,29 @@ export default function SuperAdminDashboard() {
               <View>
                 <Text style={styles.menuItemTitle}>Gestión de Usuarios</Text>
                 <Text style={styles.menuItemSub}>Bloquear o suspender cuentas</Text>
+              </View>
+            </View>
+            <Feather name="chevron-right" size={20} color={AuraColors.textMuted} />
+          </TouchableOpacity>
+
+          {/* NUEVOS BOTONES DE PAGOS Y CONFIGURACIÓN */}
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/admin-platform/payments')}>
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.iconBox, { backgroundColor: '#D1FAE5' }]}><Feather name="dollar-sign" size={24} color="#059669" /></View>
+              <View>
+                <Text style={styles.menuItemTitle}>Auditoría de Pagos</Text>
+                <Text style={styles.menuItemSub}>Ver comisiones auto-verificadas</Text>
+              </View>
+            </View>
+            <Feather name="chevron-right" size={20} color={AuraColors.textMuted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/admin-platform/settings')}>
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.iconBox, { backgroundColor: '#F3E8FF' }]}><Feather name="settings" size={24} color="#7C3AED" /></View>
+              <View>
+                <Text style={styles.menuItemTitle}>Ajustes y QR de Pagos</Text>
+                <Text style={styles.menuItemSub}>Configurar tu cuenta receptora</Text>
               </View>
             </View>
             <Feather name="chevron-right" size={20} color={AuraColors.textMuted} />
