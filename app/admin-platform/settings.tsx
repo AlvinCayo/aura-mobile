@@ -1,74 +1,130 @@
+import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useState } from 'react';
-import { Alert, Image, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Button from '../../src/components/ui/Button';
-import { supabase } from '../../src/lib/supabase';
+import { fetchPlatformConfig, updatePlatformConfig, uploadPlatformQR } from '../../src/lib/data';
 import { AuraColors } from '../../src/theme/colors';
 
-export default function SettingsScreen() {
-  const [qrUrl, setQrUrl] = useState('');
+export default function PlatformSettings() {
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const [commission, setCommission] = useState<string>('10');
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [newImageUri, setNewImageUri] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchConfig();
+    loadConfig();
   }, []);
 
-  const fetchConfig = async () => {
-    const { data } = await supabase.from('platform_config').select('value').eq('key', 'platform_qr_url').single();
-    if (data) setQrUrl(data.value);
+  const loadConfig = async () => {
+    setLoading(true);
+    const { data } = await fetchPlatformConfig();
+    if (data) {
+      if (data.platform_qr_url) setQrUrl(data.platform_qr_url);
+      if (data.commission_percentage) setCommission(data.commission_percentage);
+    }
     setLoading(false);
   };
 
-  const uploadQR = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
-    if (result.canceled) return;
-
-    setUploading(true);
-    const file = result.assets[0];
-    const fileName = `aura_platform_qr_${Date.now()}.png`;
-
-    const { error: uploadError } = await supabase.storage.from('platform-assets').upload(fileName, {
-      uri: file.uri,
-      name: fileName,
-      type: 'image/png',
-    } as any);
-
-    if (uploadError) {
-      Alert.alert('Error', 'No se pudo subir la imagen.');
-      setUploading(false);
-      return;
-    }
-
-    const { data } = supabase.storage.from('platform-assets').getPublicUrl(fileName);
-    const { error: dbError } = await supabase.from('platform_config').update({ value: data.publicUrl }).eq('key', 'platform_qr_url');
-
-    if (dbError) Alert.alert('Error', 'No se pudo guardar la configuración.');
-    else {
-      setQrUrl(data.publicUrl);
-      Alert.alert('Éxito', 'QR de AURA actualizado correctamente.');
-    }
-    setUploading(false);
+  const pickImage = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled) setNewImageUri(result.assets[0].uri);
   };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      let finalQrUrl = qrUrl;
+
+      // Si el admin seleccionó una nueva imagen, la subimos primero
+      if (newImageUri) {
+        const { url, error: uploadErr } = await uploadPlatformQR(newImageUri);
+        if (uploadErr || !url) throw new Error('Error al subir la imagen del QR.');
+        finalQrUrl = url;
+      }
+
+      // Guardamos la URL en la base de datos
+      if (finalQrUrl) {
+        const { error: dbError } = await updatePlatformConfig('platform_qr_url', finalQrUrl);
+        if (dbError) throw new Error('Error al guardar la configuración.');
+        setQrUrl(finalQrUrl);
+      }
+
+      // Aseguramos que la comisión esté guardada (por defecto 10)
+      await updatePlatformConfig('commission_percentage', commission);
+
+      setNewImageUri(null);
+      Alert.alert('¡Éxito!', 'Configuración de la plataforma actualizada correctamente.');
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <View style={styles.center}><ActivityIndicator size="large" color={AuraColors.primary} /></View>;
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>Configuración AURA</Text>
-      <View style={styles.card}>
-        <Text style={styles.label}>QR Oficial de la Plataforma (Comisiones)</Text>
-        {qrUrl ? <Image source={{ uri: qrUrl }} style={styles.qrPreview} /> : <View style={styles.qrPlaceholder}><Text>Sin QR cargado</Text></View>}
-        <Button title="Actualizar QR Oficial" onPress={uploadQR} loading={uploading} />
-      </View>
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <Text style={styles.headerTitle}>Ajustes de Plataforma</Text>
+        <Text style={styles.headerSub}>Configura cómo recibes los pagos</Text>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Código QR para Comisiones</Text>
+          <Text style={styles.helperText}>Este QR será visible para todos los clientes al momento de confirmar su reserva.</Text>
+
+          <View style={styles.qrPreviewContainer}>
+            {newImageUri || qrUrl ? (
+              <Image source={{ uri: newImageUri || qrUrl! }} style={styles.qrImage} />
+            ) : (
+              <View style={styles.qrPlaceholder}>
+                <Feather name="image" size={40} color={AuraColors.border} />
+                <Text style={styles.placeholderText}>Sin QR configurado</Text>
+              </View>
+            )}
+          </View>
+
+          <TouchableOpacity style={styles.uploadBtn} onPress={pickImage}>
+            <Feather name="upload" size={18} color={AuraColors.primary} />
+            <Text style={styles.uploadBtnText}>
+              {qrUrl || newImageUri ? 'Cambiar imagen QR' : 'Subir imagen QR'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity 
+          style={[styles.saveBtn, saving && { opacity: 0.7 }]} 
+          onPress={handleSave} 
+          disabled={saving || (!newImageUri && !qrUrl)}
+        >
+          {saving ? <ActivityIndicator color="white" /> : <Text style={styles.saveBtnText}>Guardar Configuración</Text>}
+        </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, backgroundColor: AuraColors.background },
-  title: { fontSize: 24, fontWeight: '800', marginBottom: 24 },
-  card: { padding: 20, backgroundColor: AuraColors.card, borderRadius: 16 },
-  label: { fontSize: 16, fontWeight: '600', marginBottom: 16 },
-  qrPreview: { width: 200, height: 200, alignSelf: 'center', marginBottom: 16 },
-  qrPlaceholder: { height: 200, backgroundColor: '#EEE', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  container: { flex: 1, backgroundColor: AuraColors.background },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  scroll: { padding: 24 },
+  headerTitle: { fontSize: 28, fontWeight: '800', color: AuraColors.textPrimary },
+  headerSub: { fontSize: 14, color: AuraColors.textSecondary, marginTop: 4, marginBottom: 24 },
+  card: { backgroundColor: AuraColors.card, padding: 20, borderRadius: 16, borderWidth: 1, borderColor: AuraColors.border, marginBottom: 24 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 8 },
+  helperText: { fontSize: 13, color: AuraColors.textSecondary, marginBottom: 20, lineHeight: 18 },
+  qrPreviewContainer: { alignItems: 'center', marginBottom: 20 },
+  qrImage: { width: 220, height: 220, borderRadius: 16, borderWidth: 1, borderColor: AuraColors.border },
+  qrPlaceholder: { width: 220, height: 220, borderRadius: 16, borderWidth: 1, borderColor: AuraColors.border, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FAFB' },
+  placeholderText: { color: AuraColors.textSecondary, marginTop: 12, fontWeight: '500' },
+  uploadBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, backgroundColor: AuraColors.primaryLight, paddingVertical: 14, borderRadius: 12 },
+  uploadBtnText: { color: AuraColors.primary, fontWeight: '700', fontSize: 14 },
+  saveBtn: { backgroundColor: AuraColors.primary, paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
+  saveBtnText: { color: 'white', fontWeight: '700', fontSize: 16 }
 });

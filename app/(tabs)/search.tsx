@@ -6,13 +6,14 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Modal,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import SearchBar from '../../src/components/ui/SearchBar'; // Importamos tu componente
 import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
@@ -25,7 +26,6 @@ const CATEGORIES = [
   { id: 'cejas', name: 'Cejas y Pestañas', icon: 'eye' },
 ];
 
-// Fórmula matemática Haversine para calcular distancia en Kilómetros entre dos coordenadas GPS
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const R = 6371; 
   const dLat = (lat2 - lat1) * (Math.PI / 180);
@@ -44,8 +44,10 @@ export default function SearchScreen() {
   const [centers, setCenters] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
+  
+  // Estado para el modal de filtros
+  const [isFilterModalVisible, setFilterModalVisible] = useState(false);
 
-  // Al abrir la pantalla, pedimos GPS de forma rápida
   useEffect(() => {
     (async () => {
       try {
@@ -64,28 +66,70 @@ export default function SearchScreen() {
   const fetchCenters = async () => {
     setLoading(true);
     try {
-      // 1. Buscamos solo los aprobados por el SuperAdmin
-      let query = supabase.from('centers').select('*').eq('status', 'approved');
+      // 1. Buscamos TODOS los centros aprobados (Base)
+      let centerQuery = supabase.from('centers').select('*').eq('status', 'approved');
 
-      // 2. Filtro por texto en nombre o dirección
-      if (searchQuery.trim() !== '') {
-        query = query.or(`name.ilike.%${searchQuery}%,address.ilike.%${searchQuery}%`);
-      }
-      
-      // 3. Filtro por categoría (buscamos la palabra clave en la descripción)
+      // 2. Filtro por categoría (buscamos en la columna correcta "category")
       if (selectedCategory !== 'all') {
-        const categoryKeyword = CATEGORIES.find(c => c.id === selectedCategory)?.name || '';
-        query = query.ilike('description', `%${categoryKeyword}%`);
+        const cat = CATEGORIES.find(c => c.id === selectedCategory);
+        if (cat) {
+          // Buscamos flexibilidad por si lo guardaste como id ("barberia") o nombre ("Barbería")
+          centerQuery = centerQuery.or(`category.ilike.%${cat.name}%,category.ilike.%${cat.id}%`);
+        }
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
+      const { data: initialCenters, error: centerError } = await centerQuery;
+      if (centerError) throw centerError;
 
-      let fetchedCenters = data || [];
+      let finalCenters = initialCenters || [];
+
+      // 3. Búsqueda Mixta: Por texto en Centros Y Servicios
+      if (searchQuery.trim() !== '') {
+        const lowerQuery = searchQuery.toLowerCase();
+        
+        // Coincidencias en nombre o dirección del centro
+        const matchingCenters = finalCenters.filter(c => 
+          c.name.toLowerCase().includes(lowerQuery) || 
+          (c.address && c.address.toLowerCase().includes(lowerQuery))
+        );
+
+        // Búsqueda en la tabla de servicios
+        const { data: matchedServices, error: serviceError } = await supabase
+          .from('services')
+          .select('center_id')
+          .ilike('name', `%${searchQuery}%`);
+
+        if (serviceError) throw serviceError;
+
+        const serviceCenterIds = (matchedServices || []).map(s => s.center_id);
+
+        // Extraer los centros que poseen ese servicio (y que ya pasaron el filtro de categoría)
+        const centersFromServMatch = finalCenters.filter(c => serviceCenterIds.includes(c.id));
+
+        // Combinar resultados evitando duplicados usando un Map
+        const combinedSet = new Map();
+
+        // Agregamos los que coincidieron por nombre (sin etiqueta de servicio)
+        matchingCenters.forEach(c => combinedSet.set(c.id, { ...c, matchedService: false }));
+
+        // Agregamos los que coincidieron por servicio
+        centersFromServMatch.forEach(c => {
+          if (!combinedSet.has(c.id)) {
+            combinedSet.set(c.id, { ...c, matchedService: true }); // Es un centro nuevo por servicio
+          } else {
+            combinedSet.set(c.id, { ...combinedSet.get(c.id), matchedService: true }); // Ya estaba, pero le añadimos la etiqueta
+          }
+        });
+
+        finalCenters = Array.from(combinedSet.values());
+      } else {
+         // Si no hay búsqueda de texto, aseguramos que la bandera sea false
+         finalCenters = finalCenters.map(c => ({ ...c, matchedService: false }));
+      }
 
       // 4. ORDENAMIENTO INTELIGENTE POR DISTANCIA
-      if (userLocation && fetchedCenters.length > 0) {
-        fetchedCenters = fetchedCenters.map(center => {
+      if (userLocation && finalCenters.length > 0) {
+        finalCenters = finalCenters.map(center => {
           if (center.latitude && center.longitude) {
             const dist = calculateDistance(
               userLocation.coords.latitude, 
@@ -95,14 +139,12 @@ export default function SearchScreen() {
             );
             return { ...center, distanceKm: dist };
           }
-          return { ...center, distanceKm: 9999 }; // Si el centro no tiene GPS configurado, se va al fondo de la lista
+          return { ...center, distanceKm: 9999 };
         });
-
-        // Ordenamos de menor a mayor distancia
-        fetchedCenters.sort((a, b) => a.distanceKm - b.distanceKm);
+        finalCenters.sort((a, b) => a.distanceKm - b.distanceKm);
       }
 
-      setCenters(fetchedCenters);
+      setCenters(finalCenters);
     } catch (error) {
       console.error('Error en búsqueda:', error);
     } finally {
@@ -110,7 +152,6 @@ export default function SearchScreen() {
     }
   };
 
-  // Efecto de rebote (debounce) para no saturar la base de datos al escribir rápido
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
       fetchCenters();
@@ -134,6 +175,15 @@ export default function SearchScreen() {
   const renderCenterItem = ({ item }: { item: any }) => (
     <TouchableOpacity style={styles.centerCard} onPress={() => router.push(`/center/${item.id}`)} activeOpacity={0.9}>
       <Image source={{ uri: item.image_url || 'https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=600&auto=format&fit=crop' }} style={styles.centerImage} />
+      
+      {/* Indicador de coincidencia de servicio flotante sobre la imagen */}
+      {item.matchedService && (
+        <View style={styles.serviceBadge}>
+          <Feather name="check-circle" size={12} color="white" />
+          <Text style={styles.serviceBadgeText}>Ofrece el servicio que buscas</Text>
+        </View>
+      )}
+
       <View style={styles.centerInfo}>
         <View style={styles.centerHeaderRow}>
           <Text style={styles.centerName} numberOfLines={1}>{item.name}</Text>
@@ -147,7 +197,6 @@ export default function SearchScreen() {
           <Feather name="map-pin" size={12} /> {item.address || 'Ubicación no especificada'}
         </Text>
         
-        {/* Renderizado condicional de la distancia exacta */}
         {item.distanceKm !== undefined && item.distanceKm !== 9999 && (
           <Text style={styles.distanceHighlight}>
             <Feather name="navigation" size={12}/> A {item.distanceKm} km de tu ubicación
@@ -166,22 +215,14 @@ export default function SearchScreen() {
         <Text style={styles.headerSubtitle}>Encuentra el servicio más cercano a ti</Text>
       </View>
 
+      {/* Integración del SearchBar */}
       <View style={styles.searchSection}>
-        <View style={styles.searchBar}>
-          <Feather name="search" size={20} color={AuraColors.textMuted} />
-          <TextInput 
-            style={styles.searchInput} 
-            placeholder="Ej. Barbería Central, Obrajes..." 
-            value={searchQuery} 
-            onChangeText={setSearchQuery} 
-            placeholderTextColor={AuraColors.textMuted} 
-          />
-          {searchQuery !== '' && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Feather name="x-circle" size={18} color={AuraColors.textMuted} />
-            </TouchableOpacity>
-          )}
-        </View>
+        <SearchBar 
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          onFilterPress={() => setFilterModalVisible(true)}
+          showFilter={true}
+        />
       </View>
 
       <View>
@@ -201,17 +242,47 @@ export default function SearchScreen() {
             <View style={styles.emptyBox}>
               <Feather name="search" size={48} color={AuraColors.border} />
               <Text style={styles.emptyTitle}>Sin resultados</Text>
-              <Text style={styles.emptySub}>No encontramos centros con ese criterio o aún no han sido aprobados.</Text>
+              <Text style={styles.emptySub}>No encontramos centros o servicios con ese criterio.</Text>
             </View>
           } 
         />
       )}
 
-      {/* Botón interactivo para ver el Mapa Completo */}
       <TouchableOpacity style={styles.fabMap} onPress={() => router.push('/map')}>
         <Feather name="map" size={20} color="white" />
         <Text style={styles.fabText}>Mapa de Centros</Text>
       </TouchableOpacity>
+
+      {/* Modal de Filtros (Básico) */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isFilterModalVisible}
+        onRequestClose={() => setFilterModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Filtros Avanzados</Text>
+              <TouchableOpacity onPress={() => setFilterModalVisible(false)}>
+                <Feather name="x" size={24} color={AuraColors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={styles.modalPlaceholder}>
+              (Próximamente: Filtros por rango de precios, calificación mínima, y disponibilidad de horarios)
+            </Text>
+
+            <TouchableOpacity 
+              style={styles.modalButton} 
+              onPress={() => setFilterModalVisible(false)}
+            >
+              <Text style={styles.modalButtonText}>Aplicar Filtros</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -222,8 +293,6 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 28, fontWeight: '800', color: AuraColors.textPrimary },
   headerSubtitle: { fontSize: 14, color: AuraColors.textSecondary, marginTop: 4 },
   searchSection: { paddingHorizontal: 24, marginBottom: 16 },
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: AuraColors.card, paddingHorizontal: 16, height: 50, borderRadius: 16, borderWidth: 1, borderColor: AuraColors.border },
-  searchInput: { flex: 1, marginLeft: 12, fontSize: 15, color: AuraColors.textPrimary, height: '100%' },
   categoriesList: { paddingHorizontal: 24, gap: 10, paddingBottom: 16 },
   categoryPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: AuraColors.card, borderRadius: 20, borderWidth: 1, borderColor: AuraColors.border },
   categoryPillSelected: { backgroundColor: AuraColors.primary, borderColor: AuraColors.primary },
@@ -233,6 +302,8 @@ const styles = StyleSheet.create({
   resultsList: { paddingHorizontal: 24, paddingBottom: 80 },
   centerCard: { backgroundColor: AuraColors.card, borderRadius: 16, borderWidth: 1, borderColor: AuraColors.border, overflow: 'hidden', marginBottom: 16 },
   centerImage: { width: '100%', height: 160 },
+  serviceBadge: { position: 'absolute', top: 12, left: 12, backgroundColor: AuraColors.primary, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, zIndex: 10 },
+  serviceBadgeText: { color: 'white', fontSize: 12, fontWeight: '700' },
   centerInfo: { padding: 16 },
   centerHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   centerName: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary, flex: 1, marginRight: 10 },
@@ -246,4 +317,13 @@ const styles = StyleSheet.create({
   emptySub: { fontSize: 14, color: AuraColors.textSecondary, marginTop: 8, textAlign: 'center', paddingHorizontal: 20 },
   fabMap: { position: 'absolute', bottom: 24, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: AuraColors.primary, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 30, shadowColor: AuraColors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8 },
   fabText: { color: 'white', fontWeight: '700', fontSize: 16 },
+  
+  /* Estilos del Modal */
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: AuraColors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, minHeight: 300 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: AuraColors.textPrimary },
+  modalPlaceholder: { fontSize: 14, color: AuraColors.textSecondary, textAlign: 'center', marginTop: 40, marginBottom: 40 },
+  modalButton: { backgroundColor: AuraColors.primary, paddingVertical: 16, borderRadius: 12, alignItems: 'center' },
+  modalButtonText: { color: 'white', fontSize: 16, fontWeight: '700' }
 });

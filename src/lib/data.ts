@@ -144,3 +144,92 @@ export async function createPayment(appointmentId: string, amount: number, commi
   }).select().single();
   return { data, error };
 }
+
+// Obtener la configuración global de la plataforma (QR y comisión)
+export async function fetchPlatformConfig() {
+  const { data, error } = await supabase
+    .from('platform_config')
+    .select('*')
+    .in('key', ['platform_qr_url', 'commission_percentage']);
+  
+  if (error) return { data: null, error };
+  
+  const config = data.reduce((acc, curr) => {
+    acc[curr.key] = curr.value;
+    return acc;
+  }, {} as Record<string, string>);
+  
+  return { data: config, error: null };
+}
+
+// Subir comprobante al Storage
+export async function uploadReceipt(uri: string, appointmentId: string) {
+  try {
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    const fileExt = uri.split('.').pop();
+    const filePath = `receipts/${appointmentId}_${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('receipts') // Asegúrate de crear este bucket público en Supabase
+      .upload(filePath, blob);
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage.from('receipts').getPublicUrl(filePath);
+    return { url: data.publicUrl, error: null };
+  } catch (error) {
+    return { url: null, error };
+  }
+}
+
+// Enviar pago para validación automática
+export async function submitPayment(appointmentId: string, paymentCode: string, receiptUrl: string, commissionAmount: number) {
+  // Al actualizar el estado a 'verifying_payment', el Trigger SQL de Supabase
+  // tomará el control instantáneamente y lo cambiará a 'paid' de manera automática.
+  const { data, error } = await supabase
+    .from('appointments')
+    .update({ 
+      status: 'verifying_payment',
+      payment_code: paymentCode,
+      receipt_url: receiptUrl,
+      commission_amount: commissionAmount
+    })
+    .eq('id', appointmentId)
+    .select()
+    .single();
+
+  return { data, error };
+}
+
+// Subir el QR de la plataforma (SuperAdmin)
+export async function uploadPlatformQR(uri: string) {
+  try {
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    const fileExt = uri.split('.').pop();
+    const filePath = `platform/qr_${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('assets') // Usaremos un bucket llamado 'assets'
+      .upload(filePath, blob);
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage.from('assets').getPublicUrl(filePath);
+    return { url: data.publicUrl, error: null };
+  } catch (error) {
+    return { url: null, error };
+  }
+}
+
+// Guardar o actualizar una configuración en la BD
+export async function updatePlatformConfig(key: string, value: string) {
+  const { data, error } = await supabase
+    .from('platform_config')
+    .upsert({ key, value }) // upsert crea el registro si no existe, o lo actualiza si ya existe
+    .select()
+    .single();
+
+  return { data, error };
+}
