@@ -25,15 +25,6 @@ const generateNextDays = (days: number) => {
   return dates;
 };
 
-const AVAILABLE_SLOTS = [
-  { id: '09:00:00', time: '09:00 AM', available: true },
-  { id: '10:00:00', time: '10:00 AM', available: true },
-  { id: '11:30:00', time: '11:30 AM', available: false }, 
-  { id: '14:00:00', time: '02:00 PM', available: true },
-  { id: '15:30:00', time: '03:30 PM', available: true },
-  { id: '17:00:00', time: '05:00 PM', available: true },
-];
-
 export default function BookingScreen() {
   const { centerId } = useLocalSearchParams<{ centerId: string }>();
   const router = useRouter();
@@ -48,12 +39,21 @@ export default function BookingScreen() {
   const [selectedDate, setSelectedDate] = useState(availableDates[0].dateString);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [selectedService, setSelectedService] = useState<any>(null);
+  
+  const [bookedSlots, setBookedSlots] = useState<string[]>([]);
+  // NUEVO: Aquí guardaremos las horas reales generadas por el horario del centro
+  const [dynamicSlots, setDynamicSlots] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchCenterAndServices = async () => {
       if (!centerId) return;
       try {
-        const { data: centerData } = await supabase.from('centers').select('name, address, rating').eq('id', centerId).single();
+        // CORRECCIÓN: Agregamos 'schedule' y 'owner_id' a la consulta
+        const { data: centerData } = await supabase
+          .from('centers')
+          .select('name, address, rating, schedule, owner_id')
+          .eq('id', centerId)
+          .single();
         if (centerData) setCenter(centerData);
 
         const { data: servicesData } = await supabase.from('services').select('*').eq('center_id', centerId);
@@ -67,6 +67,88 @@ export default function BookingScreen() {
     fetchCenterAndServices();
   }, [centerId]);
 
+  // Efecto que busca los turnos ocupados
+  useEffect(() => {
+    const fetchBookedSlots = async () => {
+      if (!centerId || !selectedDate) return;
+      try {
+        const { data, error } = await supabase
+          .from('appointments')
+          .select('start_time')
+          .eq('center_id', centerId)
+          .eq('appointment_date', selectedDate)
+          .in('status', ['pending', 'approved', 'paid', 'completed']);
+
+        if (error) throw error;
+
+        if (data) {
+          const occupied = data.map(apt => apt.start_time);
+          setBookedSlots(occupied);
+        }
+      } catch (error) {
+        console.error('Error fetching booked slots:', error);
+      }
+    };
+    fetchBookedSlots();
+  }, [centerId, selectedDate]);
+
+  // LA MAGIA OCURRE AQUÍ: Generar horarios basados en el día y la configuración del local
+  useEffect(() => {
+    if (!center || !center.schedule || !selectedDate) {
+      setDynamicSlots([]);
+      return;
+    }
+
+    // 1. Averiguamos qué día de la semana seleccionó el usuario (lunes, martes, etc.)
+    const [y, m, d] = selectedDate.split('-');
+    const date = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+    const daysOfWeek = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+    const dayName = daysOfWeek[date.getDay()];
+
+    // 2. Extraemos el horario de ese día específico
+    const dayConfig = center.schedule[dayName];
+    
+    // Si el día está marcado como inactivo o el horario de apertura es 00:00, no hay citas
+    if (!dayConfig || !dayConfig.active || dayConfig.open === "00:00") {
+      setDynamicSlots([]);
+      setSelectedTime(null);
+      return;
+    }
+
+    // 3. Convertimos horas (ej. 09:00) a minutos para poder calcular
+    const [openH, openM] = dayConfig.open.split(':').map(Number);
+    const [closeH, closeM] = dayConfig.close.split(':').map(Number);
+
+    let currentMins = openH * 60 + openM;
+    const closeMins = closeH * 60 + closeM;
+    
+    // Proteger hora de cierre: Asegurarnos de que el servicio alcance a terminar
+    const duration = selectedService ? selectedService.duration_min : 30; 
+    const interval = 30; // Generar botones cada 30 minutos
+
+    const slots = [];
+
+    // 4. Creamos los bloques de hora mientras el servicio alcance dentro del horario
+    while (currentMins + duration <= closeMins) {
+      const h = Math.floor(currentMins / 60);
+      const mins = currentMins % 60;
+      
+      const id = `${String(h).padStart(2, '0')}:${String(mins).padStart(2, '0')}:00`;
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const displayH = h % 12 === 0 ? 12 : h % 12;
+      const time = `${String(displayH).padStart(2, '0')}:${String(mins).padStart(2, '0')} ${ampm}`;
+
+      slots.push({ id, time, available: true });
+      
+      currentMins += interval;
+    }
+    
+    setDynamicSlots(slots);
+    
+    // Si el usuario cambia de fecha o de servicio, se limpia la hora que había seleccionado
+    setSelectedTime(null); 
+  }, [selectedDate, center, selectedService]);
+
   const handleConfirmBooking = async () => {
     if (!selectedService) return Alert.alert('Aviso', 'Por favor, selecciona un servicio.');
     if (!selectedTime) return Alert.alert('Aviso', 'Por favor, selecciona un horario.');
@@ -75,22 +157,20 @@ export default function BookingScreen() {
     setIsSubmitting(true);
 
     try {
-      // DOBLE SEGURO: Verificamos/creamos perfil
       const { data: profileCheck } = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle();
       if (!profileCheck) {
         await supabase.from('profiles').insert([{ id: user.id, email: user.email, role: 'client', full_name: user.user_metadata?.full_name || 'Usuario' }]);
       }
 
-      // CORRECCIÓN: Cálculo de end_time exacto
       const duration = selectedService.duration_min;
-      const startTimeParts = selectedTime.split(':'); // '09:00:00' -> ['09', '00', '00']
+      const startTimeParts = selectedTime.split(':');
       
       const startDate = new Date();
       startDate.setHours(parseInt(startTimeParts[0], 10));
       startDate.setMinutes(parseInt(startTimeParts[1], 10));
       startDate.setSeconds(0);
       
-      const endDate = new Date(startDate.getTime() + duration * 60000); // Sumamos los minutos
+      const endDate = new Date(startDate.getTime() + duration * 60000);
       
       const endTimeString = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}:00`;
 
@@ -100,16 +180,18 @@ export default function BookingScreen() {
         service_id: selectedService.id,
         appointment_date: selectedDate,
         start_time: selectedTime,
-        end_time: endTimeString, // <--- Aquí pasamos el valor que exige la restricción
+        end_time: endTimeString,
         status: 'pending',
       });
 
-      await sendNotification(
-        center.owner_id, 
-        "¡Nueva Solicitud de Reserva!",
-        "Un cliente quiere agendar un turno. Revisa tu panel para aprobarlo.",
-        "calendar"
-      );
+      if (center?.owner_id) {
+        await sendNotification(
+          center.owner_id, 
+          "¡Nueva Solicitud de Reserva!",
+          "Un cliente quiere agendar un turno. Revisa tu panel para aprobarlo.",
+          "calendar"
+        );
+      }
 
       if (error) throw error;
       router.replace('/booking/confirmation');
@@ -170,13 +252,23 @@ export default function BookingScreen() {
         <FlatList horizontal showsHorizontalScrollIndicator={false} data={availableDates} keyExtractor={(item) => item.dateString} renderItem={renderDateItem} contentContainerStyle={{ gap: 12, paddingVertical: 8 }} />
 
         <Text style={styles.sectionTitle}>3. Horarios Disponibles</Text>
-        <TimeSlotPicker slots={AVAILABLE_SLOTS} selectedSlot={selectedTime} onSelectSlot={setSelectedTime} />
+        {dynamicSlots.length > 0 ? (
+          <TimeSlotPicker 
+            slots={dynamicSlots} 
+            selectedSlot={selectedTime} 
+            onSelectSlot={setSelectedTime}
+            bookedSlots={bookedSlots}
+            selectedDate={selectedDate}
+          />
+        ) : (
+          <Text style={styles.emptyText}>El local no atiende en la fecha seleccionada o los servicios sobrepasan la hora de cierre.</Text>
+        )}
 
         <View style={styles.summaryBox}>
           <Text style={styles.summaryTitle}>Resumen de la Cita</Text>
           <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Servicio:</Text><Text style={styles.summaryValue}>{selectedService?.name || '---'}</Text></View>
           <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Fecha:</Text><Text style={styles.summaryValue}>{selectedDate}</Text></View>
-          <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Hora:</Text><Text style={styles.summaryValue}>{selectedTime ? AVAILABLE_SLOTS.find(s => s.id === selectedTime)?.time : '---'}</Text></View>
+          <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Hora:</Text><Text style={styles.summaryValue}>{selectedTime ? dynamicSlots.find(s => s.id === selectedTime)?.time : '---'}</Text></View>
           <View style={[styles.summaryRow, styles.summaryTotal]}><Text style={styles.totalLabel}>Total a Pagar (Aprox):</Text><Text style={styles.totalValue}>Bs {selectedService ? (selectedService.price * 1.10).toFixed(2) : '0.00'}</Text></View>
         </View>
 
@@ -198,7 +290,7 @@ const styles = StyleSheet.create({
   centerName: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary },
   centerAddress: { fontSize: 13, color: AuraColors.textSecondary, marginTop: 4 },
   sectionTitle: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 16, marginTop: 16 },
-  emptyText: { color: AuraColors.textMuted, fontStyle: 'italic', marginBottom: 16 },
+  emptyText: { color: AuraColors.textMuted, fontStyle: 'italic', marginBottom: 16, lineHeight: 20 },
   serviceCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: AuraColors.card, borderRadius: 12, borderWidth: 1, borderColor: AuraColors.border, marginBottom: 12 },
   serviceCardSelected: { borderColor: AuraColors.primary, backgroundColor: AuraColors.primaryLight },
   serviceInfo: { flex: 1 },

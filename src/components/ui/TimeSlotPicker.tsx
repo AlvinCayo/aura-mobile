@@ -12,9 +12,32 @@ interface TimeSlotPickerProps {
   slots: TimeSlot[];
   selectedSlot: string | null;
   onSelectSlot: (slotId: string) => void;
+  bookedSlots?: string[]; // NUEVO: recibe los slots ocupados desde la DB
+  selectedDate?: string;  // NUEVO: recibe la fecha elegida para comparar con "hoy"
 }
 
-export default function TimeSlotPicker({ slots, selectedSlot, onSelectSlot }: TimeSlotPickerProps) {
+export default function TimeSlotPicker({ slots, selectedSlot, onSelectSlot, bookedSlots = [], selectedDate }: TimeSlotPickerProps) {
+
+  // Lógica para comprobar si la hora ya pasó (solo afecta si se selecciona el día de hoy)
+  const isPastTime = (slotTime: string) => {
+    if (!selectedDate) return false;
+    
+    const now = new Date();
+    // Formatear hoy como YYYY-MM-DD para igualar el formato de selectedDate
+    const todayStr = now.getFullYear() + '-' + 
+                     String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+                     String(now.getDate()).padStart(2, '0');
+
+    if (selectedDate === todayStr) {
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const [slotHour, slotMinute] = slotTime.split(':').map(Number);
+      const slotTimeMinutes = slotHour * 60 + slotMinute;
+      
+      return slotTimeMinutes <= currentMinutes;
+    }
+    return false;
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.label}>Horarios disponibles</Text>
@@ -24,28 +47,36 @@ export default function TimeSlotPicker({ slots, selectedSlot, onSelectSlot }: Ti
         keyExtractor={(item) => item.id}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[
-              styles.slot,
-              !item.available && styles.slotDisabled,
-              selectedSlot === item.id && styles.slotSelected,
-            ]}
-            onPress={() => item.available && onSelectSlot(item.id)}
-            disabled={!item.available}
-            activeOpacity={0.7}
-          >
-            <Text
+        renderItem={({ item }) => {
+          // Evaluamos todas las condiciones de disponibilidad
+          const isBooked = bookedSlots.includes(item.id);
+          const isPast = isPastTime(item.id);
+          // Un slot está disponible solo si cumple las 3 condiciones
+          const isAvailable = item.available && !isBooked && !isPast;
+
+          return (
+            <TouchableOpacity
               style={[
-                styles.slotText,
-                !item.available && styles.slotTextDisabled,
-                selectedSlot === item.id && styles.slotTextSelected,
+                styles.slot,
+                !isAvailable && styles.slotDisabled,
+                selectedSlot === item.id && styles.slotSelected,
               ]}
+              onPress={() => isAvailable && onSelectSlot(item.id)}
+              disabled={!isAvailable}
+              activeOpacity={0.7}
             >
-              {item.time}
-            </Text>
-          </TouchableOpacity>
-        )}
+              <Text
+                style={[
+                  styles.slotText,
+                  !isAvailable && styles.slotTextDisabled,
+                  selectedSlot === item.id && styles.slotTextSelected,
+                ]}
+              >
+                {item.time}
+              </Text>
+            </TouchableOpacity>
+          );
+        }}
       />
     </View>
   );
@@ -78,7 +109,8 @@ const styles = StyleSheet.create({
     borderColor: AuraColors.primary,
   },
   slotDisabled: {
-    opacity: 0.4,
+    opacity: 0.5,
+    backgroundColor: '#F3F4F6', // Fondo un poco más gris para indicar que está apagado
   },
   slotText: {
     fontSize: 14,
@@ -90,5 +122,6 @@ const styles = StyleSheet.create({
   },
   slotTextDisabled: {
     color: AuraColors.textMuted,
+    textDecorationLine: 'line-through', // Efecto visual de tachado
   },
 });
