@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../src/components/ui/Button';
 import { useAuth } from '../../src/contexts/AuthContext';
@@ -15,6 +15,7 @@ export default function AdminAppointmentsScreen() {
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<FilterTab>('pending');
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'completed' | 'rejected' | 'cancelled'>('all');
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -34,7 +35,7 @@ export default function AdminAppointmentsScreen() {
         return;
       }
 
-      // 2. Consulta corregida con inner joins seguros
+      // 2. Consulta con inner joins
       let query = supabase
         .from('appointments')
         .select(`
@@ -48,7 +49,16 @@ export default function AdminAppointmentsScreen() {
 
       if (activeTab === 'pending') query = query.eq('status', 'pending');
       else if (activeTab === 'approved') query = query.eq('status', 'approved');
-      else query = query.in('status', ['completed', 'cancelled', 'paid']);
+      else {
+        // Lógica de Historial (Filtros)
+        if (historyFilter === 'all') {
+          query = query.in('status', ['completed', 'cancelled', 'rejected', 'paid']);
+        } else if (historyFilter === 'completed') {
+          query = query.in('status', ['completed', 'paid']);
+        } else {
+          query = query.eq('status', historyFilter);
+        }
+      }
 
       const { data, error } = await query;
       
@@ -69,14 +79,13 @@ export default function AdminAppointmentsScreen() {
   useEffect(() => {
     setLoading(true);
     fetchAppointments();
-  }, [user, activeTab]);
+  }, [user, activeTab, historyFilter]);
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchAppointments();
   };
 
-  // FUNCIÓN CORREGIDA Y BLINDADA
   const handleUpdateStatus = async (appointmentId: string, newStatus: string, clientName: string) => {
     Alert.alert(
       'Confirmar Acción',
@@ -85,16 +94,15 @@ export default function AdminAppointmentsScreen() {
         { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Confirmar',
-          style: newStatus === 'cancelled' ? 'destructive' : 'default',
+          style: newStatus === 'rejected' ? 'destructive' : 'default',
           onPress: async () => {
-            setLoading(true); // Mostramos carga para que la UI no quede congelada
+            setLoading(true);
             try {
               const { error } = await supabase
                 .from('appointments')
                 .update({ status: newStatus })
                 .eq('id', appointmentId);
               
-              // SI HAY UN ERROR, AHORA SÍ LO VEREMOS
               if (error) throw error;
               
               Alert.alert(
@@ -104,7 +112,7 @@ export default function AdminAppointmentsScreen() {
                   : 'Cita rechazada.'
               );
               
-              fetchAppointments(); // Recargamos para refrescar la lista
+              fetchAppointments();
             } catch (error: any) {
               console.error("Update Error:", error);
               Alert.alert('Error de Base de Datos', error.message || 'No se pudo actualizar el estado de la cita.');
@@ -139,7 +147,7 @@ export default function AdminAppointmentsScreen() {
 
         {item.status === 'pending' && (
           <View style={styles.actionsRow}>
-            <Button title="Rechazar" variant="outline" onPress={() => handleUpdateStatus(item.id, 'cancelled', clientName)} style={{flex: 1}} />
+            <Button title="Rechazar" variant="outline" onPress={() => handleUpdateStatus(item.id, 'rejected', clientName)} style={{flex: 1}} />
             <Button title="Aceptar" onPress={() => handleUpdateStatus(item.id, 'approved', clientName)} style={{flex: 1}} />
           </View>
         )}
@@ -160,6 +168,11 @@ export default function AdminAppointmentsScreen() {
              </View>
           </View>
         )}
+
+        {/* ETIQUETAS DE HISTORIAL CORREGIDAS */}
+        {item.status === 'completed' && <Text style={{color: '#16A34A', textAlign: 'center', fontWeight: '700', marginTop: 12}}>Servicio Completado</Text>}
+        {item.status === 'cancelled' && <Text style={{color: '#DC2626', textAlign: 'center', fontWeight: '700', marginTop: 12}}>Cancelada por el cliente</Text>}
+        {item.status === 'rejected' && <Text style={{color: '#DC2626', textAlign: 'center', fontWeight: '700', marginTop: 12}}>Rechazada por ti</Text>}
       </View>
     );
   };
@@ -181,6 +194,20 @@ export default function AdminAppointmentsScreen() {
           </TouchableOpacity>
         ))}
       </View>
+
+      {activeTab === 'history' && (
+        <View style={styles.subTabsContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap: 8, paddingHorizontal: 24, paddingBottom: 12}}>
+            {['all', 'completed', 'rejected', 'cancelled'].map(f => (
+              <TouchableOpacity key={f} style={[styles.subTabBtn, historyFilter === f && styles.subTabBtnActive]} onPress={() => setHistoryFilter(f as any)}>
+                <Text style={[styles.subTabText, historyFilter === f && styles.subTabTextActive]}>
+                  {f === 'all' ? 'Todas' : f === 'completed' ? 'Completadas' : f === 'rejected' ? 'Rechazadas' : 'Canceladas'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
       {loading ? (
          <View style={styles.centerLoading}><ActivityIndicator size="large" color={AuraColors.primary} /></View>
@@ -217,4 +244,9 @@ const styles = StyleSheet.create({
   detailsBox: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 10, gap: 6, marginBottom: 16 },
   detailItem: { fontSize: 14, color: AuraColors.textSecondary },
   actionsRow: { flexDirection: 'row', gap: 12 },
+  subTabsContainer: { borderBottomWidth: 1, borderBottomColor: AuraColors.border, marginBottom: 4 },
+  subTabBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0' },
+  subTabBtnActive: { backgroundColor: AuraColors.primaryLight, borderColor: AuraColors.primary },
+  subTabText: { fontSize: 13, fontWeight: '600', color: AuraColors.textSecondary },
+  subTabTextActive: { color: AuraColors.primary },
 });

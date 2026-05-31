@@ -75,6 +75,43 @@ export default function AppointmentDetailScreen() {
     );
   };
 
+  const handleCancelAppointment = () => {
+    Alert.alert(
+      'Cancelar Reserva',
+      '¿Estás seguro de que deseas cancelar esta cita? Esta acción no se puede deshacer.',
+      [
+        { text: 'No, mantener', style: 'cancel' },
+        {
+          text: 'Sí, cancelar',
+          style: 'destructive',
+          onPress: async () => {
+            setLoading(true);
+            try {
+              // 1. Actualizamos el estado a 'cancelled' (cancelado por el cliente)
+              await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', id);
+              
+              // 2. Notificamos al centro
+              if (appointment.center && appointment.center.owner_id) {
+                await sendNotification(
+                  appointment.center.owner_id,
+                  "Cita Cancelada",
+                  `El cliente acaba de cancelar su cita para el servicio de ${appointment.service.name}.`,
+                  "x-circle"
+                );
+              }
+              
+              Alert.alert('Cita Cancelada', 'Has cancelado tu reserva exitosamente.');
+              loadDetails();
+            } catch (error) {
+              Alert.alert('Error', 'No se pudo cancelar la cita.');
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   if (loading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={AuraColors.primary} /></View>;
 
   const getStatusDisplay = () => {
@@ -84,7 +121,8 @@ export default function AppointmentDetailScreen() {
       case 'verifying_payment': return { text: 'Verificando...', color: '#7C3AED', bg: '#F3E8FF', icon: 'loader' };
       case 'paid': return { text: 'Turno Asegurado', color: '#16A34A', bg: '#DCFCE7', icon: 'check-circle' };
       case 'completed': return { text: 'Completada', color: AuraColors.primary, bg: AuraColors.primaryLight, icon: 'star' };
-      case 'cancelled': return { text: 'Cancelada', color: '#9CA3AF', bg: '#F3F4F6', icon: 'x-circle' };
+      case 'cancelled': return { text: 'Cancelada por ti', color: '#9CA3AF', bg: '#F3F4F6', icon: 'x-circle' };
+      case 'rejected': return { text: 'Rechazada por el Centro', color: '#DC2626', bg: '#FEE2E2', icon: 'x-octagon' };
       default: return { text: 'Desconocido', color: '#9CA3AF', bg: '#F3F4F6', icon: 'help-circle' };
     }
   };
@@ -206,6 +244,11 @@ export default function AppointmentDetailScreen() {
              />
           </View>
         )}
+        {(appointment?.status === 'pending' || appointment?.status === 'approved' || appointment?.status === 'paid') && (
+          <TouchableOpacity onPress={handleCancelAppointment} style={styles.cancelBtn}>
+            <Text style={styles.cancelBtnText}>Cancelar Reserva</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -237,4 +280,6 @@ const styles = StyleSheet.create({
   qrContainer: { alignItems: 'center', backgroundColor: 'white', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: AuraColors.border },
   qrHeader: { fontSize: 16, fontWeight: '700', marginBottom: 12 },
   qrImage: { width: 200, height: 200, borderRadius: 12 },
+  cancelBtn: { marginTop: 24, paddingVertical: 12, alignItems: 'center' },
+  cancelBtnText: { color: '#DC2626', fontWeight: '700', fontSize: 16 },
 });

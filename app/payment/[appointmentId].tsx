@@ -77,6 +77,52 @@ export default function PaymentScreen() {
     }
   };
 
+  // NUEVA FUNCIONALIDAD: Cancelar la reserva desde la pantalla de pago
+  const handleCancelAppointment = () => {
+    Alert.alert(
+      'Cancelar Reserva',
+      '¿Estás seguro de que deseas cancelar esta reserva? Esta acción no se puede deshacer.',
+      [
+        { text: 'No, mantener', style: 'cancel' },
+        {
+          text: 'Sí, cancelar',
+          style: 'destructive',
+          onPress: async () => {
+            setSubmitting(true);
+            try {
+              // 1. Cambiar el estado a cancelado en la base de datos
+              const { error } = await supabase
+                .from('appointments')
+                .update({ status: 'cancelled' })
+                .eq('id', appointmentId);
+                
+              if (error) throw error;
+
+              // 2. Notificar al dueño del centro
+              if (appointment?.center?.owner_id) {
+                await sendNotification(
+                  appointment.center.owner_id,
+                  "Reserva Cancelada",
+                  `El cliente acaba de cancelar su proceso de pago y reserva para el servicio de ${appointment.service.name}.`,
+                  "x-circle"
+                );
+              }
+
+              // 3. Volver a la pantalla de citas
+              Alert.alert('Reserva Cancelada', 'Has cancelado tu reserva exitosamente.', [
+                { text: 'Entendido', onPress: () => router.push('/(tabs)/appointments') }
+              ]);
+            } catch (error: any) {
+              Alert.alert('Error', 'No se pudo cancelar la reserva: ' + (error.message || 'Error desconocido'));
+            } finally {
+              setSubmitting(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const handleValidation = async () => {
     if (!receiptImage || paymentCode.length < 5) {
       Alert.alert('Faltan datos', 'Por favor sube la captura del pago e ingresa un número de transacción válido (min. 5 dígitos).');
@@ -201,9 +247,13 @@ export default function PaymentScreen() {
             {receiptImage ? 'Comprobante subido con éxito' : 'Adjuntar captura del comprobante'}
           </Text>
         </TouchableOpacity>
-
         <TouchableOpacity style={[styles.submitBtn, submitting && styles.submitBtnDisabled]} onPress={handleValidation} disabled={submitting}>
           {submitting ? <ActivityIndicator color="white" /> : <Text style={styles.submitBtnText}>Verificar Automáticamente</Text>}
+        </TouchableOpacity>
+
+        {/* NUEVO: BOTÓN DE CANCELAR */}
+        <TouchableOpacity style={styles.cancelBtn} onPress={handleCancelAppointment} disabled={submitting}>
+          <Text style={styles.cancelBtnText}>Cancelar Reserva</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -255,5 +305,20 @@ const styles = StyleSheet.create({
     color: AuraColors.primary, 
     fontWeight: '700', 
     fontSize: 14 
+  },
+  /* NUEVOS ESTILOS PARA EL BOTÓN DE CANCELAR */
+  cancelBtn: { 
+    marginTop: 16, 
+    paddingVertical: 16, 
+    alignItems: 'center', 
+    borderRadius: 16, 
+    borderWidth: 1, 
+    borderColor: '#DC2626', 
+    backgroundColor: '#FEF2F2' 
+  },
+  cancelBtnText: { 
+    color: '#DC2626', 
+    fontWeight: '700', 
+    fontSize: 16 
   },
 });

@@ -51,8 +51,8 @@ export default function AdminAppointmentDetailScreen() {
       // Notificaciones Push basadas en la acción
       if (newStatus === 'approved') {
         await sendNotification(appointment.client_id, "¡Cita Aceptada!", `El centro ha aceptado tu turno. Paga la comisión para confirmarlo.`, "check");
-      } else if (newStatus === 'cancelled') {
-        await sendNotification(appointment.client_id, "Cita Cancelada", `Lo sentimos, el centro ha cancelado tu solicitud.`, "x-circle");
+      } else if (newStatus === 'rejected') {
+        await sendNotification(appointment.client_id, "Cita Rechazada", `Lo sentimos, el centro no tiene disponibilidad y ha rechazado tu solicitud.`, "x-circle");
       }
 
       await loadDetails();
@@ -121,7 +121,7 @@ export default function AdminAppointmentDetailScreen() {
           {appointment.status === 'pending' && (
             <>
               <Button title="Aprobar Cita" onPress={() => handleUpdateStatus('approved')} icon={<Feather name="check" size={18} color="white"/>} style={{marginBottom: 12}} />
-              <Button title="Rechazar / Sin espacio" variant="outline" onPress={() => handleUpdateStatus('cancelled')} />
+              <Button title="Rechazar / Sin espacio" variant="outline" onPress={() => handleUpdateStatus('rejected')} />
             </>
           )}
           {appointment.status === 'paid' && (
@@ -129,6 +129,12 @@ export default function AdminAppointmentDetailScreen() {
           )}
           {appointment.status === 'completed' && (
              <Text style={styles.finishedText}>Esta cita finalizó con éxito.</Text>
+          )}
+          {appointment.status === 'cancelled' && (
+             <Text style={[styles.finishedText, {color: '#DC2626'}]}>El cliente canceló esta cita.</Text>
+          )}
+          {appointment.status === 'rejected' && (
+             <Text style={[styles.finishedText, {color: '#DC2626'}]}>Rechazaste esta solicitud de cita.</Text>
           )}
         </View>
       </ScrollView>

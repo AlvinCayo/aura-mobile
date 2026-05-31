@@ -22,10 +22,7 @@ import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
-/**
- * Abre la app de mapas nativa según la plataforma.
- * Si falla, recurre a Google Maps en el navegador.
- */
+// Función para abrir navegación nativa o Google Maps
 const openNavigation = (lat: number, lng: number, label: string) => {
   const scheme = Platform.select({ ios: 'maps:0,0?q=', android: 'geo:0,0?q=' });
   const latLng = `${lat},${lng}`;
@@ -34,12 +31,10 @@ const openNavigation = (lat: number, lng: number, label: string) => {
     ios: `${scheme}${labelEncoded}@${latLng}`,
     android: `${scheme}${latLng}(${labelEncoded})`
   });
-
   const webFallbackUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 
   const openUrl = (url: string) => {
     Linking.openURL(url).catch(() => {
-      // Si falla el nativo, intentamos el fallback web
       if (url === nativeUrl) {
         Linking.openURL(webFallbackUrl).catch(() =>
           Alert.alert('Error', 'No se pudo abrir la aplicación de mapas.')
@@ -57,17 +52,18 @@ const openNavigation = (lat: number, lng: number, label: string) => {
   }
 };
 
-type TabType = 'services' | 'info' | 'reviews';
-
 export default function CenterProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<TabType>('services');
+  // --- Paso 1: tipos de pestañas y estado para reseñas ---
+  const [activeTab, setActiveTab] = useState<'services' | 'about' | 'reviews'>('services');
+  const [reviews, setReviews] = useState<any[]>([]);
+  // --- fin Paso 1 ---
+
   const [center, setCenter] = useState<any>(null);
   const [services, setServices] = useState<any[]>([]);
-  const [reviews, setReviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [selectedServiceDetail, setSelectedServiceDetail] = useState<any>(null);
@@ -79,7 +75,7 @@ export default function CenterProfileScreen() {
     const fetchCenterData = async () => {
       if (!id) return;
       try {
-        // Obtenemos los datos del centro, incluyendo la galería de imágenes
+        // Datos del centro
         const { data: centerData, error: centerError } = await supabase
           .from('centers')
           .select('*, gallery_urls')
@@ -88,19 +84,21 @@ export default function CenterProfileScreen() {
         if (centerError) throw centerError;
         setCenter(centerData);
 
+        // Servicios
         const { data: servicesData } = await supabase
           .from('services')
           .select('*')
           .eq('center_id', id);
         if (servicesData) setServices(servicesData);
 
+        // --- Paso 2: cargar reseñas con la estructura exacta ---
         const { data: reviewsData } = await supabase
           .from('reviews')
-          .select(
-            `id, rating, comment, created_at, profiles:client_id(full_name, avatar_url)`
-          )
-          .eq('center_id', id);
-        if (reviewsData) setReviews(reviewsData);
+          .select('id, rating, comment, created_at, client:client_id(full_name)')
+          .eq('center_id', id)
+          .order('created_at', { ascending: false });
+        setReviews(reviewsData || []);
+        // --- fin Paso 2 ---
       } catch (error: any) {
         Alert.alert('Error', 'No se pudo cargar la información del establecimiento.');
         router.back();
@@ -125,23 +123,21 @@ export default function CenterProfileScreen() {
   const submitReport = async () => {
     if (!reportCategory) return Alert.alert('Aviso', 'Selecciona un motivo para el reporte.');
     if (!reportText.trim()) return Alert.alert('Aviso', 'Debes detallar el problema.');
-    
+
     setIsReportModalVisible(false);
-    
-    // Añadimos "const { error } =" para capturar el fallo
-    const { error } = await supabase.from('reports').insert({ 
-      reporter_id: user?.id, 
-      center_id: id, 
-      reason: reportCategory, 
-      description: reportText 
+
+    const { error } = await supabase.from('reports').insert({
+      reporter_id: user?.id,
+      center_id: id,
+      reason: reportCategory,
+      description: reportText
     });
-    
-    // Si hay un error, detenemos todo y avisamos
+
     if (error) {
       Alert.alert('Error al enviar', `No se pudo guardar: ${error.message}`);
       return;
     }
-    
+
     setReportText('');
     setReportCategory('');
     Alert.alert('Reporte Enviado', 'Nuestro equipo investigará este caso. Gracias por mantener AURA segura.');
@@ -167,31 +163,6 @@ export default function CenterProfileScreen() {
       <Text style={styles.servicePrice}>{parseFloat(item.price).toFixed(2)} Bs</Text>
     </TouchableOpacity>
   );
-
-  const renderReviewItem = ({ item }: { item: any }) => {
-    const clientName = item.profiles?.full_name || 'Usuario';
-    return (
-      <View style={styles.reviewCard}>
-        <View style={styles.reviewHeader}>
-          <View style={styles.reviewUser}>
-            {item.profiles?.avatar_url ? (
-              <Image source={{ uri: item.profiles.avatar_url }} style={styles.userAvatar} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Feather name="user" size={14} color={AuraColors.textMuted} />
-              </View>
-            )}
-            <Text style={styles.reviewUserName}>{clientName}</Text>
-          </View>
-          <View style={styles.ratingStars}>
-            <Feather name="star" size={12} color="#F59E0B" fill="#F59E0B" />
-            <Text style={styles.ratingValueText}>{item.rating}</Text>
-          </View>
-        </View>
-        <Text style={styles.reviewComment}>{item.comment}</Text>
-      </View>
-    );
-  };
 
   if (loading)
     return (
@@ -260,23 +231,37 @@ export default function CenterProfileScreen() {
             </Text>
           </View>
 
+          {/* --- Paso 3: Pestañas con el botón de Reseñas agregado --- */}
           <View style={styles.tabsContainer}>
-            {(['services', 'info', 'reviews'] as TabType[]).map((tab) => (
-              <TouchableOpacity
-                key={tab}
-                style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
-                onPress={() => setActiveTab(tab)}
-              >
-                <Text style={[styles.tabLabel, activeTab === tab && styles.tabLabelActive]}>
-                  {tab === 'services'
-                    ? 'Servicios'
-                    : tab === 'info'
-                    ? 'Nosotros'
-                    : `Reseñas (${reviews.length})`}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            <TouchableOpacity
+              style={[styles.tabBtn, activeTab === 'services' && styles.tabBtnActive]}
+              onPress={() => setActiveTab('services')}
+            >
+              <Text style={[styles.tabBtnText, activeTab === 'services' && styles.tabBtnTextActive]}>
+                Servicios
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tabBtn, activeTab === 'about' && styles.tabBtnActive]}
+              onPress={() => setActiveTab('about')}
+            >
+              <Text style={[styles.tabBtnText, activeTab === 'about' && styles.tabBtnTextActive]}>
+                Nosotros
+              </Text>
+            </TouchableOpacity>
+
+            {/* Nuevo botón de Reseñas */}
+            <TouchableOpacity
+              style={[styles.tabBtn, activeTab === 'reviews' && styles.tabBtnActive]}
+              onPress={() => setActiveTab('reviews')}
+            >
+              <Text style={[styles.tabBtnText, activeTab === 'reviews' && styles.tabBtnTextActive]}>
+                Reseñas
+              </Text>
+            </TouchableOpacity>
           </View>
+          {/* --- fin Paso 3 --- */}
 
           {activeTab === 'services' && (
             <FlatList
@@ -287,13 +272,12 @@ export default function CenterProfileScreen() {
             />
           )}
 
-          {activeTab === 'info' && (
+          {activeTab === 'about' && (
             <View style={styles.aboutBox}>
               <Text style={styles.aboutDescription}>
                 {center?.description || 'Sin descripción disponible.'}
               </Text>
 
-              {/* Galería de instalaciones (si existe) */}
               {center?.gallery_urls && center.gallery_urls.length > 0 && (
                 <View style={styles.gallerySection}>
                   <Text style={styles.sectionTitle}>Nuestras Instalaciones</Text>
@@ -309,7 +293,6 @@ export default function CenterProfileScreen() {
                 </View>
               )}
 
-              {/* Botón "Cómo llegar" (nuevo, con apertura nativa mejorada) */}
               {center?.latitude && center?.longitude && (
                 <TouchableOpacity
                   style={styles.bigRouteButton}
@@ -341,14 +324,73 @@ export default function CenterProfileScreen() {
             </View>
           )}
 
+          {/* --- Paso 4: Sección de reseñas con resumen y lista --- */}
           {activeTab === 'reviews' && (
-            <FlatList
-              data={reviews}
-              keyExtractor={(item) => item.id}
-              renderItem={renderReviewItem}
-              scrollEnabled={false}
-            />
+            <View style={styles.tabContent}>
+              {/* Resumen de Estrellas */}
+              <View style={styles.reviewsSummaryCard}>
+                <Text style={styles.reviewsSummaryTitle}>
+                  {center?.rating || '0.0'}
+                </Text>
+                <View style={styles.starsRow}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Feather
+                      key={star}
+                      name="star"
+                      size={24}
+                      color={star <= Math.round(center?.rating || 0) ? '#F59E0B' : '#E2E8F0'}
+                      fill={star <= Math.round(center?.rating || 0) ? '#F59E0B' : 'transparent'}
+                    />
+                  ))}
+                </View>
+                <Text style={styles.reviewsSummaryText}>
+                  Basado en {center?.reviews_count || 0} reseñas verificadas
+                </Text>
+              </View>
+
+              {/* Lista de comentarios */}
+              {reviews.length === 0 ? (
+                <Text style={styles.emptyText}>
+                  Aún no hay reseñas para este centro. ¡Sé el primero en calificarlo al reservar!
+                </Text>
+              ) : (
+                reviews.map((review) => (
+                  <View key={review.id} style={styles.reviewCard}>
+                    <View style={styles.reviewHeader}>
+                      <View style={styles.reviewUser}>
+                        <View style={styles.reviewAvatar}>
+                          <Text style={styles.reviewAvatarText}>
+                            {review.client?.full_name?.charAt(0)?.toUpperCase() || 'U'}
+                          </Text>
+                        </View>
+                        <View>
+                          <Text style={styles.reviewUserName}>
+                            {review.client?.full_name || 'Usuario de AURA'}
+                          </Text>
+                          <Text style={styles.reviewDate}>
+                            {new Date(review.created_at).toLocaleDateString()}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.starsRowSmall}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Feather
+                            key={star}
+                            name="star"
+                            size={14}
+                            color={star <= review.rating ? '#F59E0B' : '#E2E8F0'}
+                            fill={star <= review.rating ? '#F59E0B' : 'transparent'}
+                          />
+                        ))}
+                      </View>
+                    </View>
+                    <Text style={styles.reviewComment}>{review.comment}</Text>
+                  </View>
+                ))
+              )}
+            </View>
           )}
+          {/* --- fin Paso 4 --- */}
         </View>
       </ScrollView>
 
@@ -360,7 +402,7 @@ export default function CenterProfileScreen() {
         />
       </View>
 
-      {/* MODAL DE DETALLES AMPLIADOS DEL SERVICIO (se mantiene del primer código) */}
+      {/* Modal de detalle de servicio */}
       <Modal visible={!!selectedServiceDetail} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.serviceModalContent}>
@@ -406,6 +448,8 @@ export default function CenterProfileScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Modal de reporte */}
       <Modal visible={isReportModalVisible} animationType="fade" transparent={true}>
         <View style={styles.reportModalOverlay}>
           <View style={styles.reportModalContent}>
@@ -419,8 +463,8 @@ export default function CenterProfileScreen() {
 
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16, justifyContent: 'center' }}>
               {['Cobro excesivo', 'Mal comportamiento', 'Fotos falsas', 'Otro'].map(cat => (
-                <TouchableOpacity 
-                  key={cat} 
+                <TouchableOpacity
+                  key={cat}
                   style={[styles.reportCategoryBtn, reportCategory === cat && { backgroundColor: AuraColors.primary, borderColor: AuraColors.primary }]}
                   onPress={() => setReportCategory(cat)}
                 >
@@ -521,22 +565,34 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   securityBannerText: { flex: 1, fontSize: 12, color: '#92400E', lineHeight: 18 },
+
+  // Estilos de pestañas (renombrados para que coincidan con las instrucciones)
   tabsContainer: {
     flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: AuraColors.border,
     marginBottom: 20,
   },
-  tabItem: {
+  tabBtn: {
     flex: 1,
     paddingBottom: 12,
     alignItems: 'center',
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
-  tabItemActive: { borderBottomColor: AuraColors.primary },
-  tabLabel: { fontSize: 14, fontWeight: '600', color: AuraColors.textMuted },
-  tabLabelActive: { color: AuraColors.primary },
+  tabBtnActive: {
+    borderBottomColor: AuraColors.primary,
+  },
+  tabBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: AuraColors.textMuted,
+  },
+  tabBtnTextActive: {
+    color: AuraColors.primary,
+  },
+
+  // Servicios
   serviceCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -563,6 +619,7 @@ const styles = StyleSheet.create({
   serviceDuration: { fontSize: 12, color: AuraColors.textMuted },
   servicePrice: { fontSize: 15, fontWeight: '700', color: AuraColors.primary, marginLeft: 8 },
 
+  // Sobre el centro
   aboutBox: { gap: 20 },
   aboutDescription: { fontSize: 15, color: AuraColors.textSecondary, lineHeight: 22 },
   gallerySection: { marginVertical: 8 },
@@ -610,10 +667,39 @@ const styles = StyleSheet.create({
   },
   whatsappButtonText: { color: '#16A34A', fontWeight: '600', fontSize: 14 },
 
+  // --- Paso 5: Estilos nuevos para las reseñas ---
+  tabContent: {
+    // Contenedor extra, si se necesita padding
+  },
+  reviewsSummaryCard: {
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    padding: 24,
+    borderRadius: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: AuraColors.border,
+  },
+  reviewsSummaryTitle: {
+    fontSize: 48,
+    fontWeight: '800',
+    color: AuraColors.textPrimary,
+    marginBottom: 8,
+  },
+  starsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 12,
+  },
+  reviewsSummaryText: {
+    fontSize: 14,
+    color: AuraColors.textSecondary,
+    fontWeight: '500',
+  },
   reviewCard: {
     backgroundColor: AuraColors.card,
-    borderRadius: 14,
-    padding: 14,
+    padding: 20,
+    borderRadius: 16,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: AuraColors.border,
@@ -621,23 +707,57 @@ const styles = StyleSheet.create({
   reviewHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
-  reviewUser: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  userAvatar: { width: 28, height: 28, borderRadius: 14 },
-  avatarPlaceholder: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: AuraColors.border,
+  reviewUser: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  reviewAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: AuraColors.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  reviewUserName: { fontSize: 14, fontWeight: '600', color: AuraColors.textPrimary },
-  ratingStars: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  ratingValueText: { fontSize: 12, fontWeight: '600', color: AuraColors.textSecondary },
-  reviewComment: { fontSize: 14, color: AuraColors.textSecondary, lineHeight: 20 },
+  reviewAvatarText: {
+    color: AuraColors.primary,
+    fontWeight: '700',
+    fontSize: 18,
+  },
+  reviewUserName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: AuraColors.textPrimary,
+  },
+  reviewDate: {
+    fontSize: 12,
+    color: AuraColors.textSecondary,
+    marginTop: 4,
+  },
+  starsRowSmall: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  reviewComment: {
+    fontSize: 14,
+    color: AuraColors.textSecondary,
+    lineHeight: 22,
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: AuraColors.textSecondary,
+    marginTop: 24,
+    fontStyle: 'italic',
+    paddingHorizontal: 20,
+    lineHeight: 22,
+  },
+  // --- fin Paso 5 ---
+
+  // Footer
   floatingActionFooter: {
     position: 'absolute',
     bottom: 0,
@@ -649,7 +769,7 @@ const styles = StyleSheet.create({
     borderTopColor: AuraColors.border,
   },
 
-  // Estilos del Modal
+  // Modals
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   serviceModalContent: {
     backgroundColor: AuraColors.background,
@@ -682,12 +802,43 @@ const styles = StyleSheet.create({
   serviceModalDuration: { fontSize: 14, color: AuraColors.textSecondary, fontWeight: '500' },
   serviceModalDescTitle: { fontSize: 16, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 8 },
   serviceModalDesc: { fontSize: 14, color: AuraColors.textSecondary, lineHeight: 22 },
-  reportModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end', alignItems: 'center' },
-  reportModalContent: { backgroundColor: AuraColors.background, borderRadius: 24, padding: 24, width: '90%', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 20, elevation: 10 },
+  reportModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  reportModalContent: {
+    backgroundColor: AuraColors.background,
+    borderRadius: 24,
+    padding: 24,
+    width: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
   reportModalTitle: { fontSize: 20, fontWeight: '800', color: AuraColors.textPrimary },
   reportModalSub: { fontSize: 14, color: AuraColors.textSecondary, textAlign: 'center' },
-  reportCategoryBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: AuraColors.border, backgroundColor: AuraColors.card },
+  reportCategoryBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: AuraColors.border,
+    backgroundColor: AuraColors.card,
+  },
   reportCategoryText: { fontSize: 13, fontWeight: '600', color: AuraColors.textSecondary },
-  reportInput: { backgroundColor: AuraColors.card, borderWidth: 1, borderColor: AuraColors.border, borderRadius: 12, padding: 16, minHeight: 100, marginBottom: 24, color: AuraColors.textPrimary },
+  reportInput: {
+    backgroundColor: AuraColors.card,
+    borderWidth: 1,
+    borderColor: AuraColors.border,
+    borderRadius: 12,
+    padding: 16,
+    minHeight: 100,
+    marginBottom: 24,
+    color: AuraColors.textPrimary,
+  },
   reportActions: { flexDirection: 'row', justifyContent: 'space-between' },
 });
