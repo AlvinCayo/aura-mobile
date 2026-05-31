@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../src/components/ui/Button';
 import TimeSlotPicker from '../../src/components/ui/TimeSlotPicker';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { sendNotification } from '../../src/lib/push';
 import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
@@ -93,7 +94,7 @@ export default function BookingScreen() {
       
       const endTimeString = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}:00`;
 
-      const { error } = await supabase.from('appointments').insert({
+      const { data, error } = await supabase.from('appointments').insert({
         client_id: user.id,
         center_id: centerId,
         service_id: selectedService.id,
@@ -102,6 +103,13 @@ export default function BookingScreen() {
         end_time: endTimeString, // <--- Aquí pasamos el valor que exige la restricción
         status: 'pending',
       });
+
+      await sendNotification(
+        center.owner_id, 
+        "¡Nueva Solicitud de Reserva!",
+        "Un cliente quiere agendar un turno. Revisa tu panel para aprobarlo.",
+        "calendar"
+      );
 
       if (error) throw error;
       router.replace('/booking/confirmation');

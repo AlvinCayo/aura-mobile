@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { fetchPlatformConfig, submitPayment, uploadReceipt } from '../../src/lib/data';
+import { sendNotification } from '../../src/lib/push';
 import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
@@ -66,6 +67,18 @@ export default function PaymentScreen() {
 
       // 3. Guardar en BD. ¡El Trigger hará la validación automática aquí!
       const { data, error } = await submitPayment(appointmentId as string, paymentCode, url, commission);
+      if (error) throw error;
+
+      // 4. ¡AQUÍ MANDAMOS LA NOTIFICACIÓN AL DUEÑO DEL CENTRO!
+      if (appointment.center && appointment.center.owner_id) {
+        await sendNotification(
+          appointment.center.owner_id, // Se lo enviamos al dueño del centro
+          "¡Pago de Comisión Verificado!",
+          `Se ha confirmado el pago de comisión para el servicio de ${appointment.service.name}.`,
+          "dollar-sign"
+        );
+      }
+
       if (error) throw error;
 
       // Como el trigger actúa instantáneamente, la cita ya debería estar 'paid'

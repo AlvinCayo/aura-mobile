@@ -5,6 +5,7 @@ import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, Touchabl
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../src/components/ui/Button';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { sendNotification } from '../../src/lib/push'; // Asegúrate de que la ruta sea correcta según el archivo
 import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
@@ -57,6 +58,13 @@ export default function AppointmentDetailScreen() {
           text: 'Sí, ya pagué',
           onPress: async () => {
             await supabase.from('appointments').update({ status: 'completed' }).eq('id', id);
+            if (appointment.center && appointment.center.owner_id) {
+              await sendNotification(
+              appointment.center.owner_id, // Al dueño del centro
+              "¡Servicio Completado!",
+              `El cliente ha confirmado el pago final para ${appointment.service.name}.`,
+              "check-circle");
+            }
             await handleLogAction('BALANCE_PAID_QR', { amount: appointment.service.price });
             Alert.alert('¡Excelente!', 'El servicio ha sido marcado como completado. Gracias por preferir AURA.');
             loadDetails();
@@ -182,6 +190,20 @@ export default function AppointmentDetailScreen() {
                   />
                 </View>
              )}
+          </View>
+        )}
+        {appointment?.status === 'completed' && (
+          <View style={[styles.actionContainer, { backgroundColor: '#F0FDF4' }]}>
+             <Feather name="check-circle" size={24} color="#16A34A" style={{ alignSelf: 'center', marginBottom: 12 }} />
+             <Text style={[styles.instructionText, { color: '#16A34A', fontWeight: '700' }]}>¡Servicio Completado!</Text>
+             <Text style={styles.instructionText}>Esperamos que hayas tenido una gran experiencia.</Text>
+             
+             <Button 
+               title="Calificar Servicio" 
+               onPress={() => router.push(`/review/${appointment.center.id}` as any)} 
+               icon={<Feather name="star" size={18} color="white" />}
+               style={{ marginTop: 8 }}
+             />
           </View>
         )}
       </ScrollView>

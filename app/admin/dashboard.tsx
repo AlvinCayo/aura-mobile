@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KpiCard from '../../src/components/ui/KpiCard';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { registerForPushNotificationsAsync } from '../../src/lib/push';
 import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
@@ -83,6 +84,9 @@ export default function AdminDashboardScreen() {
 
   useEffect(() => {
     loadDashboardData();
+    if (user) {
+    registerForPushNotificationsAsync(user.id);
+  }
   }, [user]);
 
   const onRefresh = () => {

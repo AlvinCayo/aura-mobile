@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -10,81 +10,66 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../src/components/ui/Button';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { sendNotification } from '../../src/lib/push';
 import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
-export default function SubmitReviewScreen() {
+export default function ReviewScreen() {
   const { centerId } = useLocalSearchParams<{ centerId: string }>();
   const router = useRouter();
   const { user } = useAuth();
 
-  const [rating, setRating] = useState(0);
+  const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [centerName, setCenterName] = useState('Centro de Estética');
-
-  // Buscar el nombre del centro para personalizar la pantalla
-  useEffect(() => {
-    const fetchCenterInfo = async () => {
-      const { data } = await supabase.from('centers').select('name').eq('id', centerId).single();
-      if (data?.name) setCenterName(data.name);
-    };
-    if (centerId) fetchCenterInfo();
-  }, [centerId]);
+  const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
-    if (rating === 0) {
-      Alert.alert('Calificación requerida', 'Por favor, selecciona al menos una estrella.');
-      return;
+    if (!comment.trim()) {
+      return Alert.alert('Falta un detalle', 'Por favor, escribe un breve comentario sobre tu experiencia.');
     }
-    if (!user || !centerId) return;
 
-    setIsSubmitting(true);
-
+    setSubmitting(true);
     try {
-      // 1. Insertar la nueva reseña
-      const { error: insertError } = await supabase.from('reviews').insert({
+      // 1. Guardar la reseña en la base de datos (El Trigger SQL hará el resto)
+      const { error } = await supabase.from('reviews').insert({
         center_id: centerId,
-        client_id: user.id,
-        rating: rating,
+        client_id: user?.id,
+        rating,
         comment: comment.trim(),
       });
 
-      if (insertError) throw insertError;
+      if (error) throw error;
 
-      // 2. Recalcular el promedio del centro
-      const { data: reviewsData, error: fetchError } = await supabase
-        .from('reviews')
-        .select('rating')
-        .eq('center_id', centerId);
+      // 2. Obtener el dueño del centro para mandarle una notificación feliz
+      const { data: centerData } = await supabase
+        .from('centers')
+        .select('owner_id, name')
+        .eq('id', centerId)
+        .single();
 
-      if (!fetchError && reviewsData && reviewsData.length > 0) {
-        const totalRating = reviewsData.reduce((acc, curr) => acc + curr.rating, 0);
-        const newAverage = (totalRating / reviewsData.length).toFixed(1);
-
-        // 3. Actualizar el centro con el nuevo promedio y contador
-        await supabase
-          .from('centers')
-          .update({ 
-            rating: parseFloat(newAverage),
-            reviews_count: reviewsData.length
-          })
-          .eq('id', centerId);
+      if (centerData?.owner_id) {
+        await sendNotification(
+          centerData.owner_id,
+          "¡Nueva Reseña de 5 Estrellas!", // Puedes personalizar esto según el 'rating'
+          `Un cliente te ha calificado con ${rating} estrellas. ¡Sigue así!`,
+          "star"
+        );
       }
 
-      Alert.alert('¡Gracias!', 'Tu reseña ha sido publicada exitosamente.', [
-        { text: 'Volver a Mis Citas', onPress: () => router.back() }
-      ]);
-
+      Alert.alert(
+        '¡Gracias por tu opinión!',
+        'Tu reseña ayuda a otros usuarios de AURA a encontrar los mejores servicios.',
+        [{ text: 'Volver al Inicio', onPress: () => router.push('/(tabs)/appointments') }]
+      );
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo enviar la reseña.');
+      Alert.alert('Error', error.message || 'No se pudo guardar la reseña.');
     } finally {
-      setIsSubmitting(false);
+      setSubmitting(false);
     }
   };
 
@@ -92,13 +77,12 @@ export default function SubmitReviewScreen() {
     return (
       <View style={styles.starsContainer}>
         {[1, 2, 3, 4, 5].map((star) => (
-          <TouchableOpacity key={star} onPress={() => setRating(star)} activeOpacity={0.7}>
+          <TouchableOpacity key={star} onPress={() => setRating(star)} style={styles.starButton}>
             <Feather
               name="star"
-              size={48}
+              size={40}
               color={star <= rating ? '#F59E0B' : AuraColors.border}
-              style={{ marginHorizontal: 4 }}
-              fill={star <= rating ? '#F59E0B' : 'transparent'} // Llena la estrella de color si está seleccionada
+              fill={star <= rating ? '#F59E0B' : 'transparent'}
             />
           </TouchableOpacity>
         ))}
@@ -111,48 +95,43 @@ export default function SubmitReviewScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Feather name="arrow-left" size={20} color={AuraColors.textPrimary} />
+            <Feather name="x" size={24} color={AuraColors.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Calificar Servicio</Text>
+          <Text style={styles.headerTitle}>Califica tu Experiencia</Text>
           <View style={{ width: 40 }} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.content}>
-          <Text style={styles.questionTitle}>¿Cómo fue tu experiencia en</Text>
-          <Text style={styles.centerNameHighlight}>{centerName}?</Text>
-
+        <ScrollView contentContainerStyle={styles.scroll}>
+          <Text style={styles.title}>¿Cómo te fue en el centro estético?</Text>
+          <Text style={styles.subtitle}>Selecciona una calificación</Text>
+          
           {renderStars()}
-
-          <Text style={styles.ratingTextLabel}>
-            {rating === 1 && 'Muy mala 😞'}
-            {rating === 2 && 'Mala 😕'}
-            {rating === 3 && 'Regular 😐'}
-            {rating === 4 && 'Buena 🙂'}
-            {rating === 5 && '¡Excelente! 🤩'}
-            {rating === 0 && 'Selecciona una calificación'}
+          
+          <Text style={styles.ratingText}>
+            {rating === 5 ? '¡Excelente!' : rating === 4 ? 'Muy bueno' : rating === 3 ? 'Aceptable' : rating === 2 ? 'Pudo ser mejor' : 'Mala experiencia'}
           </Text>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>Cuéntanos más (Opcional)</Text>
+            <Text style={styles.inputLabel}>Cuéntanos más sobre el servicio:</Text>
             <TextInput
               style={styles.textInput}
-              placeholder="¿Qué te gustó más del servicio? ¿Algo podría mejorar?"
-              placeholderTextColor={AuraColors.textMuted}
+              placeholder="Ej. Me encantó la atención, el local estaba muy limpio..."
               multiline
-              numberOfLines={6}
+              numberOfLines={5}
               value={comment}
               onChangeText={setComment}
               textAlignVertical="top"
             />
           </View>
+
         </ScrollView>
-        
+
         <View style={styles.footer}>
-          <Button 
-            title="Enviar Reseña" 
-            onPress={handleSubmit} 
-            loading={isSubmitting} 
-            icon={<Feather name="send" size={18} color="white" />}
+          <Button
+            title={submitting ? "Enviando..." : "Publicar Reseña"}
+            onPress={handleSubmit}
+            disabled={submitting}
+            icon={!submitting ? <Feather name="send" size={18} color="white" /> : undefined}
           />
         </View>
       </KeyboardAvoidingView>
@@ -165,13 +144,14 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, paddingBottom: 12 },
   backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: AuraColors.card, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: AuraColors.border },
   headerTitle: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary },
-  content: { padding: 24, alignItems: 'center' },
-  questionTitle: { fontSize: 16, color: AuraColors.textSecondary, marginTop: 12 },
-  centerNameHighlight: { fontSize: 24, fontWeight: '800', color: AuraColors.primary, marginTop: 4, textAlign: 'center', marginBottom: 32 },
-  starsContainer: { flexDirection: 'row', justifyContent: 'center', marginBottom: 16 },
-  ratingTextLabel: { fontSize: 16, fontWeight: '600', color: AuraColors.textPrimary, marginBottom: 40, height: 24 },
-  inputContainer: { width: '100%' },
+  scroll: { padding: 24, alignItems: 'center' },
+  title: { fontSize: 22, fontWeight: '800', color: AuraColors.textPrimary, textAlign: 'center', marginBottom: 8 },
+  subtitle: { fontSize: 14, color: AuraColors.textSecondary, textAlign: 'center', marginBottom: 32 },
+  starsContainer: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  starButton: { padding: 4 },
+  ratingText: { fontSize: 18, fontWeight: '700', color: '#F59E0B', marginBottom: 40 },
+  inputContainer: { width: '100%', marginBottom: 24 },
   inputLabel: { fontSize: 14, fontWeight: '600', color: AuraColors.textPrimary, marginBottom: 8 },
-  textInput: { backgroundColor: AuraColors.card, borderWidth: 1, borderColor: AuraColors.border, borderRadius: 16, padding: 16, fontSize: 15, color: AuraColors.textPrimary, minHeight: 120 },
-  footer: { padding: 24, backgroundColor: AuraColors.background, borderTopWidth: 1, borderTopColor: AuraColors.border },
+  textInput: { width: '100%', backgroundColor: AuraColors.card, borderWidth: 1, borderColor: AuraColors.border, borderRadius: 16, padding: 16, fontSize: 15, minHeight: 120, color: AuraColors.textPrimary },
+  footer: { padding: 24, backgroundColor: 'white', borderTopWidth: 1, borderTopColor: AuraColors.border },
 });

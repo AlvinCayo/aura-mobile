@@ -7,6 +7,7 @@ import Button from '../../src/components/ui/Button'; // IMPORTACIÓN DEL BOTÓN 
 import CategoryCard from '../../src/components/ui/CategoryCard';
 import CenterCard from '../../src/components/ui/CenterCard';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { registerForPushNotificationsAsync } from '../../src/lib/push';
 import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
@@ -27,6 +28,9 @@ export default function HomeScreen() {
 
   useEffect(() => {
     fetchData();
+    if (user) {
+    registerForPushNotificationsAsync(user.id);
+  }
   }, [user]);
 
   const fetchData = async () => {
