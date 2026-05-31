@@ -169,10 +169,22 @@ export default function AdminAppointmentsScreen() {
           </View>
         )}
 
-        {/* ETIQUETAS DE HISTORIAL CORREGIDAS */}
-        {item.status === 'completed' && <Text style={{color: '#16A34A', textAlign: 'center', fontWeight: '700', marginTop: 12}}>Servicio Completado</Text>}
-        {item.status === 'cancelled' && <Text style={{color: '#DC2626', textAlign: 'center', fontWeight: '700', marginTop: 12}}>Cancelada por el cliente</Text>}
-        {item.status === 'rejected' && <Text style={{color: '#DC2626', textAlign: 'center', fontWeight: '700', marginTop: 12}}>Rechazada por ti</Text>}
+        {/* Etiquetas de estado en el historial */}
+        {item.status === 'completed' && (
+          <Text style={{color: '#16A34A', textAlign: 'center', fontWeight: '700', marginTop: 12}}>
+            Servicio Completado
+          </Text>
+        )}
+        {item.status === 'cancelled' && (
+          <Text style={{color: '#DC2626', textAlign: 'center', fontWeight: '700', marginTop: 12}}>
+            Cancelada por el cliente
+          </Text>
+        )}
+        {item.status === 'rejected' && (
+          <Text style={{color: '#DC2626', textAlign: 'center', fontWeight: '700', marginTop: 12}}>
+            Rechazada por ti
+          </Text>
+        )}
       </View>
     );
   };

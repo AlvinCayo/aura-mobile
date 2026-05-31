@@ -231,19 +231,21 @@ export default function AppointmentDetailScreen() {
           </View>
         )}
         {appointment?.status === 'completed' && (
-          <View style={[styles.actionContainer, { backgroundColor: '#F0FDF4' }]}>
-             <Feather name="check-circle" size={24} color="#16A34A" style={{ alignSelf: 'center', marginBottom: 12 }} />
-             <Text style={[styles.instructionText, { color: '#16A34A', fontWeight: '700' }]}>¡Servicio Completado!</Text>
-             <Text style={styles.instructionText}>Esperamos que hayas tenido una gran experiencia.</Text>
-             
-             <Button 
-               title="Calificar Servicio" 
-               onPress={() => router.push(`/review/${appointment.center.id}` as any)} 
-               icon={<Feather name="star" size={18} color="white" />}
-               style={{ marginTop: 8 }}
-             />
-          </View>
-        )}
+  <View style={[styles.actionContainer, { backgroundColor: '#F0FDF4' }]}>
+    <Feather name="check-circle" size={24} color="#16A34A" style={{ alignSelf: 'center', marginBottom: 12 }} />
+    <Text style={[styles.instructionText, { color: '#16A34A', fontWeight: '700' }]}>¡Servicio Completado!</Text>
+    <Text style={styles.instructionText}>Esperamos que hayas tenido una gran experiencia.</Text>
+    
+    {/* NUEVO BOTÓN DE CALIFICACIÓN */}
+    <TouchableOpacity 
+      style={styles.reviewBtn} 
+      onPress={() => router.push(`/review/${appointment.center_id}`)}
+    >
+      <Feather name="star" size={20} color="white" />
+      <Text style={styles.reviewBtnText}>Calificar Servicio y Centro</Text>
+    </TouchableOpacity>
+  </View>
+)}
         {(appointment?.status === 'pending' || appointment?.status === 'approved' || appointment?.status === 'paid') && (
           <TouchableOpacity onPress={handleCancelAppointment} style={styles.cancelBtn}>
             <Text style={styles.cancelBtnText}>Cancelar Reserva</Text>
@@ -282,4 +284,19 @@ const styles = StyleSheet.create({
   qrImage: { width: 200, height: 200, borderRadius: 12 },
   cancelBtn: { marginTop: 24, paddingVertical: 12, alignItems: 'center' },
   cancelBtnText: { color: '#DC2626', fontWeight: '700', fontSize: 16 },
+    reviewBtn: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    gap: 8, 
+    marginTop: 8, 
+    paddingVertical: 14, 
+    backgroundColor: AuraColors.primary, 
+    borderRadius: 12 
+  },
+  reviewBtnText: { 
+    color: 'white', 
+    fontWeight: '700', 
+    fontSize: 16 
+  },
 });

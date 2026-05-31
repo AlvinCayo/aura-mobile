@@ -117,26 +117,54 @@ export default function AdminAppointmentDetailScreen() {
 
         <Text style={styles.statusLabel}>Estado Actual: <Text style={{fontWeight: '700', color: AuraColors.primary}}>{appointment.status.toUpperCase()}</Text></Text>
 
+        {/* Lógica de botones y estados finales */}
         <View style={styles.actions}>
+          
+          {/* BOTONES PARA CITA PENDIENTE */}
           {appointment.status === 'pending' && (
             <>
-              <Button title="Aprobar Cita" onPress={() => handleUpdateStatus('approved')} icon={<Feather name="check" size={18} color="white"/>} style={{marginBottom: 12}} />
-              <Button title="Rechazar / Sin espacio" variant="outline" onPress={() => handleUpdateStatus('rejected')} />
+              <Button 
+                title="Aceptar Cita" 
+                onPress={() => handleUpdateStatus('approved')} 
+                icon={<Feather name="check" size={18} color="white"/>} 
+                style={{marginBottom: 12}} 
+              />
+              <Button 
+                title="Rechazar" 
+                variant="outline" 
+                onPress={() => handleUpdateStatus('rejected')} 
+              />
             </>
           )}
+
+          {/* BOTÓN PARA COMPLETAR SERVICIO (Visible solo si fue pagado) */}
           {appointment.status === 'paid' && (
-            <Button title="Marcar como Completada" onPress={() => handleUpdateStatus('completed')} icon={<Feather name="star" size={18} color="white"/>} />
+            <View style={{ marginTop: 20 }}>
+              <Button 
+                title="Marcar Servicio como Completado" 
+                onPress={() => handleUpdateStatus('completed')} 
+                style={{ backgroundColor: '#16A34A' }} 
+              />
+            </View>
           )}
+
+          {/* ESTADOS FINALES (Consolidados en un solo bloque) */}
           {appointment.status === 'completed' && (
-             <Text style={styles.finishedText}>Esta cita finalizó con éxito.</Text>
-          )}
-          {appointment.status === 'cancelled' && (
-             <Text style={[styles.finishedText, {color: '#DC2626'}]}>El cliente canceló esta cita.</Text>
+            <Text style={styles.finishedText}>Esta cita finalizó con éxito.</Text>
           )}
           {appointment.status === 'rejected' && (
-             <Text style={[styles.finishedText, {color: '#DC2626'}]}>Rechazaste esta solicitud de cita.</Text>
+            <Text style={[styles.finishedText, {color: AuraColors.destructive}]}>Has rechazado esta cita.</Text>
           )}
+          {appointment.status === 'cancelled' && (
+            <Text style={[styles.finishedText, {color: AuraColors.destructive}]}>El cliente canceló esta cita.</Text>
+          )}
+
+          <Text style={{ textAlign: 'center', color: 'red', fontWeight: 'bold', marginVertical: 10 }}>
+  DEBUG STATUS: {appointment?.status}
+</Text>
         </View>
+        
+
       </ScrollView>
       <Modal visible={isReportModalVisible} animationType="fade" transparent={true}>
         <View style={styles.modalOverlay}>
