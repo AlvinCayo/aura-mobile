@@ -139,11 +139,11 @@ export default function AdminAppointmentDetailScreen() {
 
           {/* BOTÓN PARA COMPLETAR SERVICIO (Visible solo si fue pagado) */}
           {appointment.status === 'paid' && (
-            <View style={{ marginTop: 20 }}>
+            <View style={{ marginTop: 20, width: '100%' }}>
               <Button 
                 title="Marcar Servicio como Completado" 
                 onPress={() => handleUpdateStatus('completed')} 
-                style={{ backgroundColor: '#16A34A' }} 
+                style={{ backgroundColor: '#16A34A', flex: 1 }} 
               />
             </View>
           )}

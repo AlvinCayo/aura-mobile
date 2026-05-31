@@ -47,20 +47,25 @@ export default function AdminAppointmentsScreen() {
         .order('appointment_date', { ascending: true })
         .order('start_time', { ascending: true });
 
+      // ... (código anterior del query) ...
+
       if (activeTab === 'pending') query = query.eq('status', 'pending');
-      else if (activeTab === 'approved') query = query.eq('status', 'approved');
+      // --- CAMBIA ESTA LÍNEA PARA QUE INCLUYA LAS PAGADAS ---
+      else if (activeTab === 'approved') query = query.in('status', ['approved', 'paid']);
+      // ------------------------------------------------------
       else {
         // Lógica de Historial (Filtros)
         if (historyFilter === 'all') {
-          query = query.in('status', ['completed', 'cancelled', 'rejected', 'paid']);
+          query = query.in('status', ['completed', 'cancelled', 'rejected']);
         } else if (historyFilter === 'completed') {
-          query = query.in('status', ['completed', 'paid']);
+          query = query.eq('status', 'completed');
         } else {
           query = query.eq('status', historyFilter);
         }
       }
 
       const { data, error } = await query;
+      // ... (resto del código) ...
       
       if (error) {
         console.error("Error en citas:", error.message);
@@ -87,9 +92,11 @@ export default function AdminAppointmentsScreen() {
   };
 
   const handleUpdateStatus = async (appointmentId: string, newStatus: string, clientName: string) => {
+    let actionText = newStatus === 'approved' ? 'Aceptar' : newStatus === 'rejected' ? 'Rechazar' : 'Finalizar';
+    
     Alert.alert(
       'Confirmar Acción',
-      `¿Deseas ${newStatus === 'approved' ? 'Aceptar' : 'Rechazar'} la cita de ${clientName}?`,
+      `¿Deseas ${actionText} la cita de ${clientName}?`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -98,24 +105,12 @@ export default function AdminAppointmentsScreen() {
           onPress: async () => {
             setLoading(true);
             try {
-              const { error } = await supabase
-                .from('appointments')
-                .update({ status: newStatus })
-                .eq('id', appointmentId);
-              
+              const { error } = await supabase.from('appointments').update({ status: newStatus }).eq('id', appointmentId);
               if (error) throw error;
-              
-              Alert.alert(
-                'Éxito', 
-                newStatus === 'approved' 
-                  ? 'Cita aceptada. Ahora puedes verla en la pestaña "Aceptadas" esperando el pago.' 
-                  : 'Cita rechazada.'
-              );
-              
+              Alert.alert('Éxito', 'Estado actualizado correctamente.');
               fetchAppointments();
             } catch (error: any) {
-              console.error("Update Error:", error);
-              Alert.alert('Error de Base de Datos', error.message || 'No se pudo actualizar el estado de la cita.');
+              Alert.alert('Error', error.message || 'No se pudo actualizar.');
               setLoading(false);
             }
           }
@@ -156,16 +151,24 @@ export default function AdminAppointmentsScreen() {
           <Text style={{color: '#D97706', textAlign: 'center', fontStyle: 'italic', marginTop: 8}}>Esperando pago de seña del cliente...</Text>
         )}
         {item.status === 'paid' && (
-          <View style={{ marginTop: 16, backgroundColor: '#F0FDF4', padding: 14, borderRadius: 10, borderWidth: 1, borderColor: '#BBF7D0', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-             <View style={{backgroundColor: '#16A34A', padding: 6, borderRadius: 20}}>
-               <Feather name="check" size={16} color="white" />
+          <View style={{ marginTop: 16, backgroundColor: '#F0FDF4', padding: 14, borderRadius: 10, borderWidth: 1, borderColor: '#BBF7D0' }}>
+             <View style={{flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12}}>
+               <View style={{backgroundColor: '#16A34A', padding: 6, borderRadius: 20}}>
+                 <Feather name="check" size={16} color="white" />
+               </View>
+               <View style={{flex: 1}}>
+                 <Text style={{color: '#166534', fontWeight: '800', fontSize: 14}}>Cita Confirmada</Text>
+                 <Text style={{color: '#15803D', fontSize: 13, marginTop: 4, lineHeight: 18}}>
+                   Cobrarás <Text style={{fontWeight: '700'}}>{parseFloat(price).toFixed(2)} Bs</Text> mediante: <Text style={{fontWeight: '700', textTransform: 'uppercase'}}>{item.payment_preference === 'qr' ? 'QR' : 'Efectivo'}</Text>
+                 </Text>
+               </View>
              </View>
-             <View style={{flex: 1}}>
-               <Text style={{color: '#166534', fontWeight: '800', fontSize: 14}}>Cita 100% Confirmada</Text>
-               <Text style={{color: '#15803D', fontSize: 13, marginTop: 4, lineHeight: 18}}>
-                 Cobrarás <Text style={{fontWeight: '700'}}>{parseFloat(price).toFixed(2)} Bs</Text> en el local mediante: <Text style={{fontWeight: '700', textTransform: 'uppercase'}}>{item.payment_preference === 'qr' ? 'Tu código QR' : 'Efectivo'}</Text>
-               </Text>
-             </View>
+             {/* --- AQUÍ ESTÁ EL BOTÓN QUE NECESITABAS --- */}
+             <Button 
+               title="Marcar Servicio como Completado" 
+               onPress={() => handleUpdateStatus(item.id, 'completed', clientName)} 
+               style={{ backgroundColor: '#16A34A' }} 
+             />
           </View>
         )}
 

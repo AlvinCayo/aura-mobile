@@ -29,18 +29,18 @@ export default function ReviewScreen() {
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
-    if (!comment.trim()) {
-      return Alert.alert('Falta un detalle', 'Por favor, escribe un breve comentario sobre tu experiencia.');
-    }
+    // ELIMINAMOS la validación del comentario para que sea 100% opcional.
+    // Solo procedemos directo a guardar.
 
     setSubmitting(true);
     try {
-      // 1. Guardar la reseña en la base de datos (El Trigger SQL hará el resto)
+      // 1. Guardar la reseña en la base de datos
       const { error } = await supabase.from('reviews').insert({
         center_id: centerId,
         client_id: user?.id,
         rating,
-        comment: comment.trim(),
+        // Si el comentario está vacío, mandamos null para mantener limpia la BD
+        comment: comment.trim() !== '' ? comment.trim() : null,
       });
 
       if (error) throw error;
@@ -55,7 +55,7 @@ export default function ReviewScreen() {
       if (centerData?.owner_id) {
         await sendNotification(
           centerData.owner_id,
-          "¡Nueva Reseña de 5 Estrellas!", // Puedes personalizar esto según el 'rating'
+          "¡Nueva Reseña de 5 Estrellas!",
           `Un cliente te ha calificado con ${rating} estrellas. ¡Sigue así!`,
           "star"
         );
@@ -112,10 +112,12 @@ export default function ReviewScreen() {
           </Text>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>Cuéntanos más sobre el servicio:</Text>
+            {/* Añadido indicador de "Opcional" en la etiqueta */}
+            <Text style={styles.inputLabel}>Cuéntanos más sobre el servicio (Opcional):</Text>
             <TextInput
               style={styles.textInput}
-              placeholder="Ej. Me encantó la atención, el local estaba muy limpio..."
+              // Añadido indicador de "Opcional" en el placeholder
+              placeholder="Ej. Me encantó la atención... (Opcional)"
               multiline
               numberOfLines={5}
               value={comment}

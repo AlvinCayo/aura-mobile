@@ -21,10 +21,11 @@ export default function ClientAppointmentsScreen() {
   const fetchAppointments = async () => {
     if (!user) return;
     try {
+      // 1. AÑADIMOS center_id a la consulta para poder enviarlo a la pantalla de reseñas
       let query = supabase
         .from('appointments')
         .select(`
-          id, appointment_date, start_time, status,
+          id, appointment_date, start_time, status, center_id,
           centers (name, address, payment_qr_url),
           services (name, price)
         `)
@@ -104,7 +105,17 @@ export default function ClientAppointmentsScreen() {
             title="Pagar Seña y Confirmar" 
             onPress={() => router.push(`/payment/${item.id}` as any)} 
             icon={<Feather name="credit-card" size={18} color="white" />}
-            style={styles.payButton}
+            style={styles.actionButton}
+          />
+        )}
+
+        {/* NUEVO: Botón de Reseña disponible si el estado es 'completed' */}
+        {item.status === 'completed' && (
+          <Button 
+            title="Calificar Servicio" 
+            onPress={() => router.push(`/review/${item.center_id}` as any)} 
+            icon={<Feather name="star" size={18} color="white" />}
+            style={styles.actionButton}
           />
         )}
       </View>
@@ -170,7 +181,7 @@ const styles = StyleSheet.create({
   footerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   priceLabel: { fontSize: 14, color: AuraColors.textMuted },
   priceText: { fontSize: 18, fontWeight: '800', color: AuraColors.primary },
-  payButton: { marginTop: 16 },
+  actionButton: { marginTop: 16 }, // Cambiamos payButton por un nombre más genérico
   emptyBox: { alignItems: 'center', marginTop: 80 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: AuraColors.textPrimary, marginTop: 16 },
   emptySub: { fontSize: 14, color: AuraColors.textSecondary, marginTop: 8 },

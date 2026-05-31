@@ -184,13 +184,12 @@ export async function uploadReceipt(uri: string, appointmentId: string) {
 }
 
 // Enviar pago para validación automática
+// Enviar pago para validación automática
 export async function submitPayment(appointmentId: string, paymentCode: string, receiptUrl: string, commissionAmount: number) {
-  // Al actualizar el estado a 'verifying_payment', el Trigger SQL de Supabase
-  // tomará el control instantáneamente y lo cambiará a 'paid' de manera automática.
   const { data, error } = await supabase
     .from('appointments')
     .update({ 
-      status: 'verifying_payment',
+      status: 'paid', // <--- ESTO ES VITAL: Poner 'paid' aquí
       payment_code: paymentCode,
       receipt_url: receiptUrl,
       commission_amount: commissionAmount

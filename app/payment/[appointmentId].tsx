@@ -158,11 +158,6 @@ export default function PaymentScreen() {
       const { data, error } = await submitPayment(appointmentId as string, paymentCode, url, commission);
       if (error) throw error;
 
-      await supabase
-        .from('appointments')
-        .update({ status: 'paid' })
-        .eq('id', appointmentId);
-
       // 4. Mandar Notificación al dueño del centro
       if (appointment.center && appointment.center.owner_id) {
         await sendNotification(
