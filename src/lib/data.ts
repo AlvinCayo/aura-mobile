@@ -205,20 +205,27 @@ export async function submitPayment(appointmentId: string, paymentCode: string, 
 // Subir el QR de la plataforma (SuperAdmin)
 export async function uploadPlatformQR(uri: string) {
   try {
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    const fileExt = uri.split('.').pop();
-    const filePath = `platform/qr_${Date.now()}.${fileExt}`;
+    const fileExt = uri.split('.').pop() || 'jpg';
+    const fileName = `platform_qr_${Date.now()}.${fileExt}`;
 
+    const formData = new FormData();
+    formData.append('file', {
+      uri: uri,
+      name: fileName,
+      type: `image/${fileExt}`
+    } as any);
+
+    // CAMBIO CLAVE: Usamos el bucket 'service-images' que sabemos que existe y funciona
     const { error: uploadError } = await supabase.storage
-      .from('assets') // Usaremos un bucket llamado 'assets'
-      .upload(filePath, blob);
+      .from('service-images') 
+      .upload(fileName, formData);
 
     if (uploadError) throw uploadError;
 
-    const { data } = supabase.storage.from('assets').getPublicUrl(filePath);
+    const { data } = supabase.storage.from('service-images').getPublicUrl(fileName);
     return { url: data.publicUrl, error: null };
   } catch (error) {
+    console.error('Error subiendo QR de plataforma:', error);
     return { url: null, error };
   }
 }
@@ -227,9 +234,11 @@ export async function uploadPlatformQR(uri: string) {
 export async function updatePlatformConfig(key: string, value: string) {
   const { data, error } = await supabase
     .from('platform_config')
-    .upsert({ key, value }) // upsert crea el registro si no existe, o lo actualiza si ya existe
+    .upsert({ key: key, value: value }, { onConflict: 'key' }) // Indicamos explícitamente la llave de conflicto
     .select()
     .single();
+
+  if (error) console.error("Detalle del error en Supabase:", error);
 
   return { data, error };
 }

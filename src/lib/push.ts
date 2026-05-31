@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
@@ -38,7 +39,22 @@ export async function registerForPushNotificationsAsync(userId: string) {
       console.log('Permiso denegado para notificaciones push');
       return;
     }
-    token = (await Notifications.getExpoPushTokenAsync({ projectId: 'tu-project-id-de-app.json' })).data;
+    
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
+    if (!projectId) {
+      console.log('No se encontró el Project ID de Expo. Configura eas.json primero.');
+      return;
+    }
+    try {
+      token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+      
+      if (token) {
+        await supabase.from('profiles').update({ expo_push_token: token }).eq('id', userId);
+      }
+    } catch (error) {
+      console.log('No se pudo obtener el token Push (es normal si usas un emulador).');
+      return;
+    }
     
     // Guardamos el token en Supabase en el perfil del usuario
     if (token) {

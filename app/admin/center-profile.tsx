@@ -4,19 +4,10 @@ import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+  ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, ScrollView,
+  StyleSheet, Text, TextInput, TouchableOpacity, View
 } from 'react-native';
-import MapView, { Marker } from 'react-native-maps'; // IMPORTANTE: Agregamos el mapa
+import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../src/components/ui/Button';
 import Input from '../../src/components/ui/Input';
@@ -29,7 +20,6 @@ const DAYS_ORDER = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado
 export default function CenterProfileScreen() {
   const router = useRouter();
   const { user } = useAuth();
-
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [centerId, setCenterId] = useState<string | null>(null);
@@ -50,11 +40,10 @@ export default function CenterProfileScreen() {
     domingo: { open: '00:00', close: '00:00', active: false },
   });
   
-  // Coordenadas y Mapa
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [mapRegion, setMapRegion] = useState({
-    latitude: -16.4958, // La Paz por defecto
+    latitude: -16.4958,
     longitude: -68.1335,
     latitudeDelta: 0.02,
     longitudeDelta: 0.02,
@@ -62,6 +51,8 @@ export default function CenterProfileScreen() {
 
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [newImage, setNewImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  
+  // ESTADOS DE LA GALERÍA
   const [gallery, setGallery] = useState<string[]>([]);
   const [newGalleryImages, setNewGalleryImages] = useState<ImagePicker.ImagePickerAsset[]>([]);
 
@@ -104,21 +95,17 @@ export default function CenterProfileScreen() {
     try {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') return Alert.alert('Error', 'Se requiere permiso de GPS.');
-      
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const lat = loc.coords.latitude;
       const lon = loc.coords.longitude;
-      
       setLatitude(lat);
       setLongitude(lon);
-      setMapRegion({ ...mapRegion, latitude: lat, longitude: lon }); // Centrar mapa
-      Alert.alert('Éxito', 'Coordenadas capturadas. Verifica en el mapa y presiona "Guardar Cambios".');
+      setMapRegion({ ...mapRegion, latitude: lat, longitude: lon });
     } catch (e) {
-      Alert.alert('Error', 'No se pudo obtener el GPS. Verifica la señal de tu teléfono.');
+      Alert.alert('Error', 'No se pudo obtener el GPS.');
     }
   };
 
-  // Novedad: Permitir al usuario tocar el mapa para mover el pin
   const handleMapPress = (e: any) => {
     const { latitude: newLat, longitude: newLon } = e.nativeEvent.coordinate;
     setLatitude(newLat);
@@ -126,15 +113,14 @@ export default function CenterProfileScreen() {
   };
 
   const pickMainImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') return Alert.alert('Permiso necesario');
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [16, 9], quality: 0.8 });
+    let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [16, 9], quality: 0.8 });
     if (!result.canceled) setNewImage(result.assets[0]);
   };
 
+  // FUNCIONES DE LA GALERÍA
   const pickGalleryImage = async () => {
     if ((gallery.length + newGalleryImages.length) >= 3) return Alert.alert('Límite', 'Solo 3 fotos de galería.');
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [4, 3], quality: 0.8 });
+    let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [4, 3], quality: 0.8 });
     if (!result.canceled) setNewGalleryImages([...newGalleryImages, result.assets[0]]);
   };
 
@@ -144,14 +130,14 @@ export default function CenterProfileScreen() {
   };
 
   const handleSave = async () => {
-    if (!centerId) return Alert.alert('Error', 'No se encontró el ID del centro. Intenta reiniciar la app.');
-    if (!name) return Alert.alert('Aviso', 'El nombre del centro es obligatorio.');
+    if (!centerId || !name) return Alert.alert('Aviso', 'El nombre es obligatorio.');
     
     setSaving(true);
     try {
       let finalMainImageUrl = imageUri;
       const finalGalleryUrls = [...gallery];
 
+      // 1. Subir Imagen Principal
       if (newImage) {
         const fileExt = newImage.uri.split('.').pop() || 'jpg';
         const fileName = `cover_${centerId}_${Date.now()}.${fileExt}`;
@@ -162,6 +148,7 @@ export default function CenterProfileScreen() {
         finalMainImageUrl = supabase.storage.from('service-images').getPublicUrl(fileName).data.publicUrl;
       }
 
+      // 2. Subir Imágenes de Galería
       for (const img of newGalleryImages) {
         const fileExt = img.uri.split('.').pop() || 'jpg';
         const fileName = `gallery_${centerId}_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
@@ -184,7 +171,7 @@ export default function CenterProfileScreen() {
       }
 
       const { error } = await supabase.from('centers').update(updateData).eq('id', centerId);
-      if (error) throw new Error(error.message || 'Error de base de datos.');
+      if (error) throw new Error(error.message);
 
       Alert.alert('¡Actualizado!', 'Perfil guardado exitosamente.');
       setNewImage(null); 
@@ -208,7 +195,6 @@ export default function CenterProfileScreen() {
             <View><Text style={styles.title}>Perfil y Horarios</Text></View>
           </View>
 
-          {/* FOTOS Y DATOS BASICOS OCULTOS POR BREVEDAD, SON IGUALES A TU CODIGO ORIGINAL */}
           <View style={styles.imageSection}>
              <View style={styles.imageContainer}>
                {newImage || imageUri ? <Image source={{ uri: newImage ? newImage.uri : imageUri! }} style={styles.image} /> : <View style={styles.imagePlaceholder}><Feather name="image" size={40} color={AuraColors.textMuted} /></View>}
@@ -216,10 +202,34 @@ export default function CenterProfileScreen() {
              <TouchableOpacity style={styles.changeImageButton} onPress={pickMainImage}><Feather name="camera" size={16} color={AuraColors.primary} /><Text style={styles.changeImageText}>Cambiar Portada</Text></TouchableOpacity>
           </View>
 
+          {/* GALERÍA DE IMÁGENES RESTAURADA */}
+          <View style={styles.gallerySection}>
+            <Text style={styles.sectionLabel}>Fotos de Instalaciones (Máx 3)</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingVertical: 10 }}>
+              {gallery.map((url, index) => (
+                <View key={`old-${index}`}>
+                  <Image source={{ uri: url }} style={styles.galleryImageItem} />
+                  <TouchableOpacity style={styles.removeImageBtn} onPress={() => removeGalleryImage(index, false)}><Feather name="x" size={16} color="white" /></TouchableOpacity>
+                </View>
+              ))}
+              {newGalleryImages.map((img, index) => (
+                <View key={`new-${index}`}>
+                  <Image source={{ uri: img.uri }} style={styles.galleryImageItem} />
+                  <TouchableOpacity style={styles.removeImageBtn} onPress={() => removeGalleryImage(index, true)}><Feather name="x" size={16} color="white" /></TouchableOpacity>
+                </View>
+              ))}
+              {(gallery.length + newGalleryImages.length) < 3 && (
+                <TouchableOpacity style={styles.addGalleryBtn} onPress={pickGalleryImage}>
+                  <Feather name="plus" size={24} color={AuraColors.primary} />
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+          </View>
+
           <View style={styles.form}>
             <Input label="Nombre del centro" icon="award" value={name} onChangeText={setName} />
-            <Input label="Número WhatsApp (Para consultas)" icon="message-circle" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-            <Input label="Categoría (Barbería, Spa...)" icon="tag" value={category} onChangeText={setCategory} />
+            <Input label="Número WhatsApp" icon="message-circle" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+            <Input label="Categoría" icon="tag" value={category} onChangeText={setCategory} />
             <Input label="Dirección textual" icon="map-pin" value={address} onChangeText={setAddress} />
             <Input label="Descripción" icon="align-left" value={description} onChangeText={setDescription} multiline numberOfLines={4} style={{ minHeight: 80, textAlignVertical: 'top' }} />
           </View>
@@ -243,38 +253,22 @@ export default function CenterProfileScreen() {
              ))}
           </View>
 
-          {/* NUEVA SECCIÓN DE GPS INTERACTIVO */}
           <View style={styles.gpsSection}>
             <Text style={styles.sectionLabel}>Ubicación Exacta en el Mapa</Text>
             <Text style={styles.gpsWarningText}>Toca el mapa para colocar el pin de tu local o usa el botón para capturar tu GPS actual.</Text>
-            
             <View style={styles.mapWrapper}>
-              <MapView 
-                style={styles.miniMap}
-                region={mapRegion}
-                onPress={handleMapPress}
-                scrollEnabled={false} 
-              >
-                {/* Corrección: Validación estricta para TypeScript */}
+              <MapView style={styles.miniMap} region={mapRegion} onPress={handleMapPress} scrollEnabled={false}>
                 {latitude !== null && longitude !== null && (
                   <Marker coordinate={{ latitude: latitude as number, longitude: longitude as number }}>
-                    <View style={styles.mapPin}>
-                      <Feather name="map-pin" size={16} color="white" />
-                    </View>
+                    <View style={styles.mapPin}><Feather name="map-pin" size={16} color="white" /></View>
                   </Marker>
                 )}
               </MapView>
             </View>
-
             <TouchableOpacity style={styles.gpsButton} onPress={handleGetLocation}>
               <Feather name="navigation" size={18} color={AuraColors.primary} />
               <Text style={styles.gpsButtonText}>Fijar GPS actual</Text>
             </TouchableOpacity>
-
-            {/* Corrección: Validación estricta para el texto de coordenadas */}
-            {latitude !== null && longitude !== null && (
-               <Text style={styles.coordsText}>Lat: {latitude.toFixed(5)}, Lon: {longitude.toFixed(5)}</Text>
-            )}
           </View>
 
           <Button title="Guardar Cambios" onPress={handleSave} loading={saving} icon={<Feather name="save" size={18} color="white" />} />
@@ -291,8 +285,6 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: 24, gap: 16 },
   backButton: { padding: 8, marginLeft: -8 },
   title: { fontSize: 24, fontWeight: '800', color: AuraColors.textPrimary },
-  
-  // Estilos omitidos para brevedad (mantén los tuyos)
   imageSection: { alignItems: 'center', marginBottom: 24 },
   imageContainer: { width: '100%', height: 180, borderRadius: 16, overflow: 'hidden', backgroundColor: AuraColors.border, marginBottom: 12 },
   image: { width: '100%', height: '100%' },
@@ -300,6 +292,12 @@ const styles = StyleSheet.create({
   changeImageButton: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: AuraColors.primaryLight, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
   changeImageText: { fontSize: 14, color: AuraColors.primary, fontWeight: '600' },
   form: { marginBottom: 24 },
+  
+  /* ESTILOS DE GALERÍA RESTAURADOS */
+  gallerySection: { marginBottom: 24 },
+  galleryImageItem: { width: 120, height: 90, borderRadius: 12, borderWidth: 1, borderColor: AuraColors.border },
+  addGalleryBtn: { width: 120, height: 90, borderRadius: 12, borderWidth: 2, borderColor: AuraColors.primaryLight, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
+  removeImageBtn: { position: 'absolute', top: -6, right: -6, backgroundColor: '#EF4444', borderRadius: 12, width: 24, height: 24, justifyContent: 'center', alignItems: 'center' },
   
   scheduleSection: { marginBottom: 24, backgroundColor: AuraColors.card, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: AuraColors.border },
   dayRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
@@ -310,14 +308,12 @@ const styles = StyleSheet.create({
   timeInput: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: AuraColors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, fontSize: 14, color: AuraColors.textPrimary, width: 70, textAlign: 'center' },
   closedText: { fontSize: 14, color: '#EF4444', fontStyle: 'italic', paddingRight: 20 },
 
-  // Estilos GPS Nuevos
   gpsSection: { marginBottom: 32, backgroundColor: '#F8FAFC', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: AuraColors.border },
   sectionLabel: { fontSize: 16, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 4 },
   gpsWarningText: { fontSize: 13, color: AuraColors.textSecondary, marginBottom: 16, lineHeight: 18 },
   mapWrapper: { width: '100%', height: 200, borderRadius: 12, overflow: 'hidden', marginBottom: 16, borderWidth: 1, borderColor: AuraColors.border },
   miniMap: { width: '100%', height: '100%' },
-  mapPin: { backgroundColor: AuraColors.primary, padding: 8, borderRadius: 20, borderWidth: 2, borderColor: 'white', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3, elevation: 4 },
+  mapPin: { backgroundColor: AuraColors.primary, padding: 8, borderRadius: 20, borderWidth: 2, borderColor: 'white' },
   gpsButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: AuraColors.primaryLight, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: AuraColors.primary, borderStyle: 'dashed' },
-  gpsButtonText: { color: AuraColors.primary, fontWeight: '700', fontSize: 14 },
-  coordsText: { textAlign: 'center', marginTop: 12, fontSize: 12, color: AuraColors.textMuted }
+  gpsButtonText: { color: AuraColors.primary, fontWeight: '700', fontSize: 14 }
 });

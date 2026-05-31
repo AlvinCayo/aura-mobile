@@ -12,6 +12,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -70,6 +71,9 @@ export default function CenterProfileScreen() {
   const [loading, setLoading] = useState(true);
 
   const [selectedServiceDetail, setSelectedServiceDetail] = useState<any>(null);
+  const [isReportModalVisible, setIsReportModalVisible] = useState(false);
+  const [reportCategory, setReportCategory] = useState('');
+  const [reportText, setReportText] = useState('');
 
   useEffect(() => {
     const fetchCenterData = async () => {
@@ -115,27 +119,32 @@ export default function CenterProfileScreen() {
   };
 
   const handleReportCenter = () => {
-    Alert.prompt(
-      'Reportar Centro',
-      '¿El centro cobra montos diferentes a los de la app o tiene mal comportamiento? Describe el problema:',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Enviar Reporte',
-          style: 'destructive',
-          onPress: async (text?: string) => {
-            if (!text) return;
-            await supabase.from('reports').insert({
-              reporter_id: user?.id,
-              center_id: id,
-              reason: 'PRICE_DISCREPANCY_OR_FRAUD',
-              description: text,
-            });
-            Alert.alert('Reporte Enviado', 'Nuestro equipo investigará este caso. Gracias por mantener AURA segura.');
-          },
-        },
-      ]
-    );
+    setIsReportModalVisible(true);
+  };
+
+  const submitReport = async () => {
+    if (!reportCategory) return Alert.alert('Aviso', 'Selecciona un motivo para el reporte.');
+    if (!reportText.trim()) return Alert.alert('Aviso', 'Debes detallar el problema.');
+    
+    setIsReportModalVisible(false);
+    
+    // Añadimos "const { error } =" para capturar el fallo
+    const { error } = await supabase.from('reports').insert({ 
+      reporter_id: user?.id, 
+      center_id: id, 
+      reason: reportCategory, 
+      description: reportText 
+    });
+    
+    // Si hay un error, detenemos todo y avisamos
+    if (error) {
+      Alert.alert('Error al enviar', `No se pudo guardar: ${error.message}`);
+      return;
+    }
+    
+    setReportText('');
+    setReportCategory('');
+    Alert.alert('Reporte Enviado', 'Nuestro equipo investigará este caso. Gracias por mantener AURA segura.');
   };
 
   const renderServiceItem = ({ item }: { item: any }) => (
@@ -397,6 +406,45 @@ export default function CenterProfileScreen() {
           </View>
         </View>
       </Modal>
+      <Modal visible={isReportModalVisible} animationType="fade" transparent={true}>
+        <View style={styles.reportModalOverlay}>
+          <View style={styles.reportModalContent}>
+            <View style={{ alignItems: 'center', marginBottom: 16 }}>
+              <View style={{ backgroundColor: '#FEE2E2', padding: 12, borderRadius: 30, marginBottom: 12 }}>
+                <Feather name="flag" size={24} color={AuraColors.destructive} />
+              </View>
+              <Text style={styles.reportModalTitle}>Reportar Centro</Text>
+              <Text style={styles.reportModalSub}>Selecciona el motivo principal:</Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16, justifyContent: 'center' }}>
+              {['Cobro excesivo', 'Mal comportamiento', 'Fotos falsas', 'Otro'].map(cat => (
+                <TouchableOpacity 
+                  key={cat} 
+                  style={[styles.reportCategoryBtn, reportCategory === cat && { backgroundColor: AuraColors.primary, borderColor: AuraColors.primary }]}
+                  onPress={() => setReportCategory(cat)}
+                >
+                  <Text style={[styles.reportCategoryText, reportCategory === cat && { color: 'white' }]}>{cat}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TextInput
+              style={styles.reportInput}
+              multiline
+              numberOfLines={4}
+              placeholder="Detalla lo ocurrido para que podamos investigar..."
+              value={reportText}
+              onChangeText={setReportText}
+              textAlignVertical="top"
+            />
+            <View style={styles.reportActions}>
+              <Button title="Cancelar" variant="outline" onPress={() => setIsReportModalVisible(false)} style={{ flex: 1, marginRight: 8 }} />
+              <Button title="Enviar Reporte" onPress={submitReport} style={{ flex: 1, backgroundColor: AuraColors.destructive }} />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -634,4 +682,12 @@ const styles = StyleSheet.create({
   serviceModalDuration: { fontSize: 14, color: AuraColors.textSecondary, fontWeight: '500' },
   serviceModalDescTitle: { fontSize: 16, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 8 },
   serviceModalDesc: { fontSize: 14, color: AuraColors.textSecondary, lineHeight: 22 },
+  reportModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end', alignItems: 'center' },
+  reportModalContent: { backgroundColor: AuraColors.background, borderRadius: 24, padding: 24, width: '90%', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 20, elevation: 10 },
+  reportModalTitle: { fontSize: 20, fontWeight: '800', color: AuraColors.textPrimary },
+  reportModalSub: { fontSize: 14, color: AuraColors.textSecondary, textAlign: 'center' },
+  reportCategoryBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: AuraColors.border, backgroundColor: AuraColors.card },
+  reportCategoryText: { fontSize: 13, fontWeight: '600', color: AuraColors.textSecondary },
+  reportInput: { backgroundColor: AuraColors.card, borderWidth: 1, borderColor: AuraColors.border, borderRadius: 12, padding: 16, minHeight: 100, marginBottom: 24, color: AuraColors.textPrimary },
+  reportActions: { flexDirection: 'row', justifyContent: 'space-between' },
 });

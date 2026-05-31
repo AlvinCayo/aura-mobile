@@ -3,7 +3,8 @@ import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { fetchPlatformConfig, updatePlatformConfig, uploadPlatformQR } from '../../src/lib/data';
+import { fetchPlatformConfig, updatePlatformConfig } from '../../src/lib/data';
+import { supabase } from '../../src/lib/supabase';
 import { AuraColors } from '../../src/theme/colors';
 
 export default function PlatformSettings() {
@@ -27,39 +28,47 @@ export default function PlatformSettings() {
     setLoading(false);
   };
 
+  // 1. Corrección del Warning de ImagePicker
   const pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'], // Sintaxis actualizada
       allowsEditing: true,
       quality: 0.8,
     });
     if (!result.canceled) setNewImageUri(result.assets[0].uri);
   };
 
+  // 2. Lógica de guardado idéntica a la del Centro
   const handleSave = async () => {
     setSaving(true);
     try {
       let finalQrUrl = qrUrl;
 
-      // Si el admin seleccionó una nueva imagen, la subimos primero
       if (newImageUri) {
-        const { url, error: uploadErr } = await uploadPlatformQR(newImageUri);
-        if (uploadErr || !url) throw new Error('Error al subir la imagen del QR.');
-        finalQrUrl = url;
+        const fileExt = newImageUri.split('.').pop() || 'jpg';
+        const fileName = `platform_qr_${Date.now()}.${fileExt}`;
+        const formData = new FormData();
+        formData.append('file', { uri: newImageUri, name: fileName, type: `image/${fileExt}` } as any);
+        
+        const { error: uploadError } = await supabase.storage
+          .from('service-images') // Usamos el mismo bucket que sí te funciona
+          .upload(fileName, formData);
+          
+        if (uploadError) throw new Error('Error al subir la imagen: ' + uploadError.message);
+        
+        finalQrUrl = supabase.storage.from('service-images').getPublicUrl(fileName).data.publicUrl;
       }
 
-      // Guardamos la URL en la base de datos
       if (finalQrUrl) {
         const { error: dbError } = await updatePlatformConfig('platform_qr_url', finalQrUrl);
-        if (dbError) throw new Error('Error al guardar la configuración.');
+        if (dbError) throw new Error(`Error BD: ${dbError.message}`);
         setQrUrl(finalQrUrl);
       }
 
-      // Aseguramos que la comisión esté guardada (por defecto 10)
       await updatePlatformConfig('commission_percentage', commission);
 
       setNewImageUri(null);
-      Alert.alert('¡Éxito!', 'Configuración de la plataforma actualizada correctamente.');
+      Alert.alert('¡Éxito!', 'Configuración actualizada correctamente.');
     } catch (error: any) {
       Alert.alert('Error', error.message);
     } finally {

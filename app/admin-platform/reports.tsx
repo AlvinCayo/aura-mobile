@@ -15,10 +15,9 @@ export default function ReportsScreen() {
   const fetchReports = async () => {
     try {
       const { data, error } = await supabase
-        .from('reports')
-        .select(`id, reason, description, status, created_at, reporter:reporter_id(full_name), center:center_id(id, name)`)
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false });
+      .from('reports')
+      .select('id, reason, description, status, created_at, center:center_id(name)')
+      .order('created_at', { ascending: false });
 
       if (error) throw error;
       setReports(data || []);
