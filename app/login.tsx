@@ -134,7 +134,7 @@ export default function LoginScreen() {
           <View style={styles.logoSection}>
             <View style={styles.logoCircle}>
             <Image source={require('../assets/images/icon.png')} // 2. Ruta a tu archivo
-            style={{ width: 72, height: 72 }} // Ajusta el tamaño
+            style={{ width: 82, height: 82 }} // Ajusta el tamaño
             resizeMode="contain"/>
           </View>
             <Text style={styles.appName}>AURA</Text>

@@ -106,8 +106,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   iconContainer: {
-    width: 130,
-    height: 130,
+    width: 140,
+    height: 140,
     borderRadius: 65,
     backgroundColor: AuraColors.primaryLight,
     justifyContent: 'center',

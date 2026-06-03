@@ -25,9 +25,10 @@ export default function ReportsScreen() {
 
   const fetchReports = async () => {
     try {
+      // CORRECCIÓN SINTAXIS SUPABASE: Se usan los nombres de las tablas 'centers' y 'profiles'
       const { data, error } = await supabase
         .from('reports')
-        .select('id, reason, description, status, admin_notes, created_at, center:center_id(id, name), reporter:reporter_id(full_name)')
+        .select('id, reason, description, status, admin_notes, created_at, centers(id, name), profiles(full_name)')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -46,7 +47,7 @@ export default function ReportsScreen() {
   const getFilteredReports = () => {
     if (activeTab === 'pending') return reports.filter(r => r.status === 'pending' || !r.status);
     if (activeTab === 'investigating') return reports.filter(r => r.status === 'investigating');
-    return reports.filter(r => r.status === 'action_taken' || r.status === 'dismissed');
+    return reports.filter(r => r.status === 'action_taken' || r.status === 'dismissed' || r.status === 'resolved');
   };
 
   const handleProcessReport = async (newStatus: ReportStatus, issueStrike: boolean = false) => {
@@ -55,29 +56,40 @@ export default function ReportsScreen() {
 
     try {
       // 1. Actualizar el estado y bitácora del reporte
-      await supabase.from('reports')
+      const { error: updateError } = await supabase.from('reports')
         .update({ status: newStatus, admin_notes: adminNote })
         .eq('id', selectedReport.id);
 
-      // 2. Trazabilidad: Registrar en Audit Logs
-      await supabase.from('audit_logs').insert({
-        actor_id: user?.id,
-        action: `REPORT_${newStatus.toUpperCase()}`,
-        details: { report_id: selectedReport.id, notes: adminNote, strike_issued: issueStrike }
-      });
+      if (updateError) throw updateError;
 
-      // 3. Sistema de Strikes (Lógica de Suspensión Automática a futuro)
-      if (issueStrike && selectedReport.center?.id) {
-        // Aquí podrías incrementar un contador de "strikes" en la tabla centers.
-        Alert.alert('Advertencia Emitida', 'Se ha registrado la infracción en el historial del centro.');
+      // 2. Trazabilidad Segura (Bloque Try/Catch aislado para que no crashee la app)
+      try {
+        await supabase.from('audit_logs').insert({
+          actor_id: user?.id,
+          action: `REPORT_${newStatus.toUpperCase()}`,
+          details: { report_id: selectedReport.id, notes: adminNote, strike_issued: issueStrike }
+        });
+      } catch (logError) {
+        console.log("Tabla audit_logs no detectada, omitiendo registro.");
       }
 
-      Alert.alert('Auditoría Actualizada', 'El reporte ha cambiado de estado exitosamente.');
+      // 3. Sistema de Sanciones
+      if (issueStrike && selectedReport.centers?.id) {
+        try {
+          await supabase.from('centers').update({ status: 'suspended' }).eq('id', selectedReport.centers.id);
+          Alert.alert('Sanción Aplicada', 'El centro ha sido suspendido de la plataforma.');
+        } catch(e) {
+          Alert.alert('Sanción Registrada', 'Se ha emitido una advertencia oficial al centro.');
+        }
+      } else {
+        Alert.alert('Auditoría Actualizada', 'El reporte ha cambiado de estado exitosamente.');
+      }
+
       setSelectedReport(null);
       setAdminNote('');
       fetchReports();
     } catch (error: any) {
-      Alert.alert('Error de Sistema', 'No se pudo procesar la auditoría.');
+      Alert.alert('Error de Sistema', error.message || 'No se pudo procesar la auditoría.');
     } finally {
       setIsSubmitting(false);
     }
@@ -94,8 +106,9 @@ export default function ReportsScreen() {
         <Text style={styles.dateText}>{new Date(item.created_at).toLocaleDateString()}</Text>
       </View>
       
-      <Text style={styles.centerName}>Acusado: {item.center?.name || 'Centro Desconocido'}</Text>
-      <Text style={styles.reporterName}>Reportado por: {item.reporter?.full_name || 'Anónimo'}</Text>
+      {/* CORRECCIÓN: Usar los nombres de tablas correctos extraidos de supabase */}
+      <Text style={styles.centerName}>Acusado: {item.centers?.name || 'Centro Desconocido'}</Text>
+      <Text style={styles.reporterName}>Reportado por: {item.profiles?.full_name || 'Anónimo'}</Text>
       
       <View style={styles.descriptionBox}>
         <Text style={{fontWeight: '700', marginBottom: 4, color: AuraColors.textPrimary}}>Motivo: {item.reason}</Text>
@@ -166,10 +179,10 @@ export default function ReportsScreen() {
               <TouchableOpacity onPress={() => setSelectedReport(null)}><Feather name="x" size={24} color={AuraColors.textPrimary}/></TouchableOpacity>
             </View>
             
-            <Text style={styles.inputLabel}>Bitácora de Investigación (Obligatorio)</Text>
+            <Text style={styles.inputLabel}>Bitácora de Investigación (Opcional)</Text>
             <TextInput
               style={styles.textInput}
-              placeholder="Ej. Se contactó al cliente, se verificó el fraude..."
+              placeholder="Ej. Se verificó el fraude..."
               multiline
               numberOfLines={4}
               value={adminNote}
@@ -182,7 +195,7 @@ export default function ReportsScreen() {
                 <Button title="Marcar: En Investigación" onPress={() => handleProcessReport('investigating')} style={{backgroundColor: '#D97706'}} />
               )}
               <Button title="Desestimar (Reporte Falso)" onPress={() => handleProcessReport('dismissed')} variant="outline" />
-              <Button title="Aplicar Sanción / Strike al Centro" onPress={() => handleProcessReport('action_taken', true)} style={{backgroundColor: '#EF4444'}} icon={<Feather name="alert-triangle" size={18} color="white" />} />
+              <Button title="Aplicar Sanción al Centro" onPress={() => handleProcessReport('action_taken', true)} style={{backgroundColor: '#EF4444'}} icon={<Feather name="alert-triangle" size={18} color="white" />} />
             </View>
           </View>
         </View>

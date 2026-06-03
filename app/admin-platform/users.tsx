@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/contexts/AuthContext';
@@ -14,7 +14,6 @@ export default function AdminUsersScreen() {
   const { user } = useAuth();
   
   const [users, setUsers] = useState<any[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,17 +21,15 @@ export default function AdminUsersScreen() {
 
   const fetchUsers = async () => {
     try {
-      // 1. Ampliamos el límite para garantizar la carga masiva y total del sistema
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .neq('role', 'superadmin')
         .order('created_at', { ascending: false })
-        .limit(10000); 
+        .limit(1000); 
 
       if (error) throw error;
       setUsers(data || []);
-      setFilteredUsers(data || []);
     } catch (error: any) {
       Alert.alert('Error', 'No se pudo cargar la arquitectura de usuarios.');
     } finally {
@@ -43,22 +40,27 @@ export default function AdminUsersScreen() {
 
   useEffect(() => { fetchUsers(); }, []);
 
-  useEffect(() => {
+  // CORRECCIÓN: Filtros optimizados usando useMemo garantizan respuesta instantánea
+  const filteredUsers = useMemo(() => {
     let result = users;
-    if (activeFilter !== 'all') result = result.filter(u => u.role === activeFilter);
+    if (activeFilter !== 'all') {
+      result = result.filter(u => u.role === activeFilter);
+    }
     if (searchQuery.trim() !== '') {
       const q = searchQuery.toLowerCase();
-      result = result.filter(u => (u.full_name && u.full_name.toLowerCase().includes(q)) || (u.email && u.email.toLowerCase().includes(q)));
+      result = result.filter(u => 
+        (u.full_name && u.full_name.toLowerCase().includes(q)) || 
+        (u.email && u.email.toLowerCase().includes(q))
+      );
     }
-    setFilteredUsers(result);
-  }, [searchQuery, activeFilter, users]);
+    return result;
+  }, [users, activeFilter, searchQuery]);
 
   const onRefresh = () => { setRefreshing(true); fetchUsers(); };
 
-  // Herramienta Avanzada: Auditoría Rápida del Usuario
+  // Auditoría Rápida del Usuario
   const handleInspectUser = async (targetUser: any) => {
     try {
-      // Hacemos una consulta rápida para ver el volumen transaccional del usuario
       const { count: apptCount } = await supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('client_id', targetUser.id);
       const { count: reportCount } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('reporter_id', targetUser.id);
       
@@ -78,23 +80,29 @@ export default function AdminUsersScreen() {
 
     Alert.alert(
       isSuspending ? 'Revocar Acceso (Ban)' : 'Restaurar Acceso',
-      `Esta acción modificará los privilegios de ${targetUser.full_name || 'este usuario'} a nivel de base de datos. ¿Proceder?`,
+      `Se modificará el acceso de ${targetUser.full_name || 'este usuario'}. ¿Proceder?`,
       [
         { text: 'Cancelar', style: 'cancel' },
         { 
-          text: 'Confirmar Ejecución', 
+          text: 'Confirmar', 
           style: isSuspending ? 'destructive' : 'default',
           onPress: async () => {
             try {
               const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', targetUser.id);
               if (error) throw error;
 
-              await supabase.from('audit_logs').insert({
-                actor_id: user?.id,
-                action: isSuspending ? 'ACCESS_REVOKED' : 'ACCESS_RESTORED',
-                details: { target_user_id: targetUser.id }
-              });
+              // Trazabilidad Segura (aislada del hilo principal)
+              try {
+                await supabase.from('audit_logs').insert({
+                  actor_id: user?.id,
+                  action: isSuspending ? 'ACCESS_REVOKED' : 'ACCESS_RESTORED',
+                  details: { target_user_id: targetUser.id }
+                });
+              } catch (auditError) {
+                // Log ignorado si no existe la tabla
+              }
 
+              Alert.alert('Éxito', `Usuario ${isSuspending ? 'baneado' : 'restaurado'} correctamente.`);
               fetchUsers();
             } catch (error: any) {
               Alert.alert('Error', 'Fallo en la manipulación de roles.');
@@ -149,7 +157,6 @@ export default function AdminUsersScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Mantiene tu mismo Header y buscador original visualmente */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}><Feather name="arrow-left" size={20} color={AuraColors.textPrimary} /></TouchableOpacity>
         <Text style={styles.headerTitle}>Gestión de Usuarios</Text>

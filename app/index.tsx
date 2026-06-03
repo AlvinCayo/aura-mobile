@@ -1,7 +1,6 @@
-import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native'; // 1. Importa Image
 import { AuraColors } from '../src/theme/colors';
 
 export default function SplashScreen() {
@@ -17,8 +16,12 @@ export default function SplashScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.logoContainer}>
-        {/* Fix: cast name to any to avoid type error */}
-        <Feather name={'sparkles' as any} size={48} color={AuraColors.primary} />
+        {/* 2. Reemplaza Feather por Image */}
+        <Image 
+          source={require('../assets/images/icon.png')} // Cambia esta ruta por la de tu imagen
+          style={styles.logoImage}
+          resizeMode="contain"
+        />
       </View>
       <Text style={styles.title}>AURA</Text>
       <Text style={styles.subtitle}>Bienestar & Estética</Text>
@@ -42,11 +45,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
+    // Dependiendo de tu logo, puedes conservar o quitar la sombra
     shadowColor: AuraColors.primary,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.2,
     shadowRadius: 16,
     elevation: 12,
+  },
+  logoImage: {   // 3. Agrega estilos para tu imagen
+    width: 120,    // Ajusta el tamaño de tu imagen
+    height: 120,
   },
   title: {
     fontSize: 40,
