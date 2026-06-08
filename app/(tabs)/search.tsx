@@ -48,6 +48,11 @@ export default function SearchScreen() {
   // Estado para el modal de filtros
   const [isFilterModalVisible, setFilterModalVisible] = useState(false);
 
+  // Estados para Filtros Avanzados
+  const [minRating, setMinRating] = useState(0);
+  const [maxDistance, setMaxDistance] = useState(50);
+  const [sortBy, setSortBy] = useState<'distance' | 'rating'>('distance');
+
   useEffect(() => {
     (async () => {
       try {
@@ -123,8 +128,8 @@ export default function SearchScreen() {
 
         finalCenters = Array.from(combinedSet.values());
       } else {
-         // Si no hay búsqueda de texto, aseguramos que la bandera sea false
-         finalCenters = finalCenters.map(c => ({ ...c, matchedService: false }));
+          // Si no hay búsqueda de texto, aseguramos que la bandera sea false
+          finalCenters = finalCenters.map(c => ({ ...c, matchedService: false }));
       }
 
       // 4. ORDENAMIENTO INTELIGENTE POR DISTANCIA
@@ -141,8 +146,15 @@ export default function SearchScreen() {
           }
           return { ...center, distanceKm: 9999 };
         });
-        finalCenters.sort((a, b) => a.distanceKm - b.distanceKm);
+      } else {
+        finalCenters = finalCenters.map(center => ({ ...center, distanceKm: 9999 }));
       }
+
+      // APLICAR FILTROS AVANZADOS
+      finalCenters = finalCenters.filter(c => (c.rating || 0) >= minRating && c.distanceKm <= maxDistance);
+      
+      // APLICAR ORDENAMIENTO
+      finalCenters.sort((a, b) => sortBy === 'rating' ? (b.rating || 0) - (a.rating || 0) : a.distanceKm - b.distanceKm);
 
       setCenters(finalCenters);
     } catch (error) {
@@ -197,7 +209,7 @@ export default function SearchScreen() {
           <Feather name="map-pin" size={12} /> {item.address || 'Ubicación no especificada'}
         </Text>
         
-        {item.distanceKm !== undefined && item.distanceKm !== 9999 && (
+        {item.distanceKm !== 9999 && (
           <Text style={styles.distanceHighlight}>
             <Feather name="navigation" size={12}/> A {item.distanceKm} km de tu ubicación
           </Text>
@@ -253,7 +265,7 @@ export default function SearchScreen() {
         <Text style={styles.fabText}>Mapa de Centros</Text>
       </TouchableOpacity>
 
-      {/* Modal de Filtros (Básico) */}
+      {/* Modal de Filtros Avanzados */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -269,14 +281,35 @@ export default function SearchScreen() {
               </TouchableOpacity>
             </View>
             
-            <Text style={styles.modalPlaceholder}>
-              (Próximamente: Filtros por rango de precios, calificación mínima, y disponibilidad de horarios)
-            </Text>
+            <Text style={styles.label}>Distancia máxima: {maxDistance} km</Text>
+            <View style={styles.row}>
+              {[5, 10, 20, 50].map((dist) => (
+                <TouchableOpacity key={dist} style={[styles.pill, maxDistance === dist && styles.pillActive]} onPress={() => setMaxDistance(dist)}>
+                  <Text style={maxDistance === dist ? styles.pillTextActive : styles.pillText}>{dist} km</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
-            <TouchableOpacity 
-              style={styles.modalButton} 
-              onPress={() => setFilterModalVisible(false)}
-            >
+            <Text style={styles.label}>Calificación mínima</Text>
+            <View style={styles.row}>
+              {[0, 3, 4, 4.5].map((rate) => (
+                <TouchableOpacity key={rate} style={[styles.pill, minRating === rate && styles.pillActive]} onPress={() => setMinRating(rate)}>
+                  <Text style={minRating === rate ? styles.pillTextActive : styles.pillText}>{rate}+ estrellas</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.label}>Ordenar por</Text>
+            <View style={styles.row}>
+              <TouchableOpacity style={[styles.pill, sortBy === 'distance' && styles.pillActive]} onPress={() => setSortBy('distance')}>
+                <Text style={sortBy === 'distance' ? styles.pillTextActive : styles.pillText}>Distancia</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.pill, sortBy === 'rating' && styles.pillActive]} onPress={() => setSortBy('rating')}>
+                <Text style={sortBy === 'rating' ? styles.pillTextActive : styles.pillText}>Calificación</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.modalButton} onPress={() => { fetchCenters(); setFilterModalVisible(false); }}>
               <Text style={styles.modalButtonText}>Aplicar Filtros</Text>
             </TouchableOpacity>
           </View>
@@ -318,12 +351,17 @@ const styles = StyleSheet.create({
   fabMap: { position: 'absolute', bottom: 24, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: AuraColors.primary, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 30, shadowColor: AuraColors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8 },
   fabText: { color: 'white', fontWeight: '700', fontSize: 16 },
   
-  /* Estilos del Modal */
+  // ESTILOS MODAL Y FILTROS
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: AuraColors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, minHeight: 300 },
+  modalContent: { backgroundColor: AuraColors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, minHeight: 350 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
   modalTitle: { fontSize: 20, fontWeight: '700', color: AuraColors.textPrimary },
-  modalPlaceholder: { fontSize: 14, color: AuraColors.textSecondary, textAlign: 'center', marginTop: 40, marginBottom: 40 },
-  modalButton: { backgroundColor: AuraColors.primary, paddingVertical: 16, borderRadius: 12, alignItems: 'center' },
+  label: { fontSize: 14, fontWeight: '700', color: AuraColors.textPrimary, marginTop: 16, marginBottom: 8 },
+  row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  pill: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: AuraColors.card, borderWidth: 1, borderColor: AuraColors.border },
+  pillActive: { backgroundColor: AuraColors.primary, borderColor: AuraColors.primary },
+  pillText: { color: AuraColors.textSecondary, fontSize: 12 },
+  pillTextActive: { color: 'white', fontSize: 12, fontWeight: '700' },
+  modalButton: { backgroundColor: AuraColors.primary, paddingVertical: 16, borderRadius: 12, alignItems: 'center', marginTop: 24 },
   modalButtonText: { color: 'white', fontSize: 16, fontWeight: '700' }
 });

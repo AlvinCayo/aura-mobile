@@ -21,9 +21,11 @@ export default function AdminUsersScreen() {
 
   const fetchUsers = async () => {
     try {
+      setLoading(true);
+      // CORRECCIÓN 1: Traemos la tabla centers para poder buscar por nombre comercial
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('*, centers:centers(id, name)')
         .neq('role', 'superadmin')
         .order('created_at', { ascending: false })
         .limit(1000); 
@@ -40,18 +42,32 @@ export default function AdminUsersScreen() {
 
   useEffect(() => { fetchUsers(); }, []);
 
-  // CORRECCIÓN: Filtros optimizados usando useMemo garantizan respuesta instantánea
+  // CORRECCIÓN 2: Filtros Inteligentes Optimizados
   const filteredUsers = useMemo(() => {
     let result = users;
+    
+    // Arreglo del filtro "Clientes" (Abarca nulos, indefinidos y 'user')
     if (activeFilter !== 'all') {
-      result = result.filter(u => u.role === activeFilter);
+      if (activeFilter === 'client') {
+        result = result.filter(u => u.role === 'client' || !u.role || u.role === '' || u.role === 'user');
+      } else {
+        result = result.filter(u => u.role === activeFilter);
+      }
     }
+
+    // Buscador por Nombre, Correo o Nombre del Centro
     if (searchQuery.trim() !== '') {
       const q = searchQuery.toLowerCase();
-      result = result.filter(u => 
-        (u.full_name && u.full_name.toLowerCase().includes(q)) || 
-        (u.email && u.email.toLowerCase().includes(q))
-      );
+      result = result.filter(u => {
+        const fullName = (u.full_name || '').toLowerCase();
+        const email = (u.email || '').toLowerCase();
+        
+        // Extraer nombre del centro de forma segura
+        const centerData = u.centers;
+        const centerName = (centerData?.name || (Array.isArray(centerData) ? centerData[0]?.name : '') || '').toLowerCase();
+
+        return fullName.includes(q) || email.includes(q) || centerName.includes(q);
+      });
     }
     return result;
   }, [users, activeFilter, searchQuery]);
@@ -66,7 +82,7 @@ export default function AdminUsersScreen() {
       
       Alert.alert(
         `Auditoría: ${targetUser.full_name}`,
-        `Rol: ${targetUser.role.toUpperCase()}\nCitas Registradas: ${apptCount || 0}\nReportes Emitidos: ${reportCount || 0}\nIngreso al Sistema: ${new Date(targetUser.created_at).toLocaleDateString()}`,
+        `Rol Actual: ${(targetUser.role || 'cliente').toUpperCase()}\nCitas Registradas: ${apptCount || 0}\nReportes Emitidos: ${reportCount || 0}\nIngreso al Sistema: ${new Date(targetUser.created_at).toLocaleDateString()}`,
         [{ text: 'Cerrar Inspector', style: 'cancel' }]
       );
     } catch(e) {
@@ -88,10 +104,21 @@ export default function AdminUsersScreen() {
           style: isSuspending ? 'destructive' : 'default',
           onPress: async () => {
             try {
-              const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', targetUser.id);
+              // CORRECCIÓN 3: Agregamos .select() para obligar a Supabase a decirnos si el RLS bloqueó la acción
+              const { data, error } = await supabase
+                .from('profiles')
+                .update({ role: newRole })
+                .eq('id', targetUser.id)
+                .select(); // <--- Esto es vital para saber si realmente se actualizó
+              
               if (error) throw error;
 
-              // Trazabilidad Segura (aislada del hilo principal)
+              // Si Supabase devuelve un arreglo vacío, significa que el RLS bloqueó la edición.
+              if (!data || data.length === 0) {
+                 throw new Error("Supabase bloqueó la acción por seguridad (RLS). Debes agregar la política en el SQL Editor.");
+              }
+
+              // Intentar registrar el log (no bloquea si la tabla no existe)
               try {
                 await supabase.from('audit_logs').insert({
                   actor_id: user?.id,
@@ -99,13 +126,13 @@ export default function AdminUsersScreen() {
                   details: { target_user_id: targetUser.id }
                 });
               } catch (auditError) {
-                // Log ignorado si no existe la tabla
+                // Se ignora silenciosamente si no tienes configurada la tabla logs
               }
 
-              Alert.alert('Éxito', `Usuario ${isSuspending ? 'baneado' : 'restaurado'} correctamente.`);
-              fetchUsers();
+              Alert.alert('Éxito', `Usuario ${isSuspending ? 'suspendido' : 'restaurado'} correctamente.`);
+              fetchUsers(); // Recarga la lista para mostrar el cambio en tiempo real
             } catch (error: any) {
-              Alert.alert('Error', 'Fallo en la manipulación de roles.');
+              Alert.alert('Acción Denegada', error.message || 'Fallo en la manipulación de roles.');
             }
           }
         }
@@ -114,8 +141,8 @@ export default function AdminUsersScreen() {
   };
 
   const getRoleBadge = (role: string) => {
+    if (!role || role === 'client' || role === 'user') return { text: 'Cliente', bg: '#E0E7FF', color: '#3730A3' };
     switch (role) {
-      case 'client': return { text: 'Cliente', bg: '#E0E7FF', color: '#3730A3' };
       case 'center_owner': return { text: 'Centro Estético', bg: '#DCFCE7', color: '#166534' };
       case 'suspended': return { text: 'Acceso Revocado', bg: '#FEE2E2', color: '#991B1B' };
       default: return { text: role, bg: '#F1F5F9', color: '#475569' };
@@ -125,6 +152,10 @@ export default function AdminUsersScreen() {
   const renderItem = ({ item }: { item: any }) => {
     const badge = getRoleBadge(item.role);
     const isSuspended = item.role === 'suspended';
+    
+    // Rescatar el nombre del centro para mostrarlo debajo del nombre
+    const centerData = item.centers;
+    const associatedCenterName = centerData?.name || (Array.isArray(centerData) ? centerData[0]?.name : null);
 
     return (
       <View style={[styles.userCard, isSuspended && styles.userCardSuspended]}>
@@ -132,6 +163,9 @@ export default function AdminUsersScreen() {
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{item.full_name || 'Sin Nombre'}</Text>
             <Text style={styles.userEmail}>{item.email || 'Correo no disponible'}</Text>
+            {associatedCenterName && (
+              <Text style={styles.centerSubName}>Centro: {associatedCenterName}</Text>
+            )}
           </View>
           <View style={[styles.badge, { backgroundColor: badge.bg }]}>
             <Text style={[styles.badgeText, { color: badge.color }]}>{badge.text}</Text>
@@ -146,7 +180,7 @@ export default function AdminUsersScreen() {
 
           <TouchableOpacity style={[styles.suspendButton, isSuspended ? styles.reactivateButton : null]} onPress={() => handleToggleSuspend(item)}>
             <Feather name={isSuspended ? "unlock" : "lock"} size={14} color="white" />
-            <Text style={styles.suspendButtonText}>{isSuspended ? "Restaurar" : "Banear"}</Text>
+            <Text style={styles.suspendButtonText}>{isSuspended ? "Restaurar" : "Suspender"}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -166,7 +200,7 @@ export default function AdminUsersScreen() {
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
           <Feather name="search" size={20} color={AuraColors.textMuted} />
-          <TextInput style={styles.searchInput} placeholder="Buscar por nombre o correo..." value={searchQuery} onChangeText={setSearchQuery} placeholderTextColor={AuraColors.textMuted} />
+          <TextInput style={styles.searchInput} placeholder="Buscar nombre, correo o centro..." value={searchQuery} onChangeText={setSearchQuery} placeholderTextColor={AuraColors.textMuted} />
           {searchQuery !== '' && (<TouchableOpacity onPress={() => setSearchQuery('')}><Feather name="x-circle" size={18} color={AuraColors.textMuted} /></TouchableOpacity>)}
         </View>
       </View>
@@ -175,7 +209,7 @@ export default function AdminUsersScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 24 }}>
           {(['all', 'client', 'center_owner', 'suspended'] as FilterRole[]).map((filter) => (
             <TouchableOpacity key={filter} style={[styles.filterPill, activeFilter === filter && styles.filterPillActive]} onPress={() => setActiveFilter(filter)}>
-              <Text style={[styles.filterText, activeFilter === filter && styles.filterTextActive]}>{filter === 'all' ? 'Todos' : filter === 'client' ? 'Clientes' : filter === 'center_owner' ? 'Centros' : 'Baneados'}</Text>
+              <Text style={[styles.filterText, activeFilter === filter && styles.filterTextActive]}>{filter === 'all' ? 'Todos' : filter === 'client' ? 'Clientes' : filter === 'center_owner' ? 'Centros' : 'Suspendidos'}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -189,6 +223,11 @@ export default function AdminUsersScreen() {
         renderItem={renderItem} 
         contentContainerStyle={styles.listContent} 
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[AuraColors.primary]} />}
+        ListEmptyComponent={
+          <View style={{alignItems: 'center', marginTop: 40}}>
+            <Text style={{color: AuraColors.textMuted}}>No se encontraron resultados.</Text>
+          </View>
+        }
       />
     </SafeAreaView>
   );
@@ -217,6 +256,7 @@ const styles = StyleSheet.create({
   userInfo: { flex: 1, paddingRight: 12 },
   userName: { fontSize: 16, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 2 },
   userEmail: { fontSize: 13, color: AuraColors.textSecondary },
+  centerSubName: { fontSize: 12, color: AuraColors.primary, fontWeight: '700', marginTop: 4 },
   badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   badgeText: { fontSize: 11, fontWeight: '700' },
   userActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTopWidth: 1, borderTopColor: AuraColors.border },

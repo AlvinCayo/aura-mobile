@@ -145,7 +145,16 @@ export default function SuperAdminDashboard() {
             </View>
             <Feather name="chevron-right" size={20} color={AuraColors.textMuted} />
           </TouchableOpacity>
-
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/admin-platform/tickets')}>
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.iconBox, { backgroundColor: '#EDE9FE' }]}><Feather name="inbox" size={24} color="#6D28D9" /></View>
+              <View>
+                <Text style={styles.menuItemTitle}>Buzón de Soporte</Text>
+                <Text style={styles.menuItemSub}>Sugerencias y errores reportados</Text>
+              </View>
+            </View>
+            <Feather name="chevron-right" size={20} color={AuraColors.textMuted} />
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>

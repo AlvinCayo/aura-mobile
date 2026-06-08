@@ -59,6 +59,7 @@ export default function PasswordRecoveryScreen() {
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
+            style={styles.largeInput}
           />
 
           <Button
@@ -94,6 +95,12 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 26, fontWeight: '700', color: AuraColors.textPrimary, marginBottom: 12, textAlign: 'center' },
   description: { fontSize: 15, color: AuraColors.textSecondary, textAlign: 'center', marginBottom: 32, lineHeight: 22, paddingHorizontal: 10 },
+  
+  largeInput: {
+    height: 56,
+    fontSize: 16,
+  },
+  
   submitButton: { width: '100%', marginBottom: 24 },
   backToLogin: { fontSize: 14, color: AuraColors.primary, fontWeight: '500' },
 });
