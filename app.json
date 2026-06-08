@@ -33,6 +33,8 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      ["expo-camera", { "cameraPermission": "Permitir que Aura use tu cámara para el análisis facial." }],
+      ["expo-image-picker", { "photosPermission": "Permitir que Aura acceda a tus fotos para la simulación." }],
       "expo-router",
       [
         "expo-splash-screen",
